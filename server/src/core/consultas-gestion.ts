@@ -41,7 +41,7 @@ export async function clientesAGestionarHoy(db: Database, ctx: AuthContext, hoy:
       clienteId: gestion.clienteId,
       clienteNombre: cliente.razonSocial,
       vendedorId: gestion.vendedorId,
-      vendedorNombre: usuario.nombre,
+      vendedorNombre: sql<string>`${usuario.nombre} || ' ' || ${usuario.apellido}`,
       tipo: gestion.tipo,
       estado: gestion.estado,
       fecha: gestion.fecha,

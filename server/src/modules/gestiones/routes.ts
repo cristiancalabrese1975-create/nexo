@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { randomInt } from 'node:crypto'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { cliente, gestion, usuario } from '../../db/schema'
 import { ValidationError } from '../../core/errors'
@@ -26,7 +26,7 @@ export async function gestionesRoutes(app: FastifyInstance) {
         clienteId: gestion.clienteId,
         clienteNombre: cliente.razonSocial,
         vendedorId: gestion.vendedorId,
-        vendedorNombre: usuario.nombre,
+        vendedorNombre: sql<string>`${usuario.nombre} || ' ' || ${usuario.apellido}`,
         tipo: gestion.tipo,
         estado: gestion.estado,
         fecha: gestion.fecha,

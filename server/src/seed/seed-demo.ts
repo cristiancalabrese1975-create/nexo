@@ -219,6 +219,25 @@ async function main() {
   const empresaId = empresaFila!.id
   console.log(`  empresa=${empresaId}`)
 
+  // Guarda de idempotencia a nivel de todo el seed (no fila por fila):
+  // varias de las tablas de abajo (objetivo, oportunidad, gestion,
+  // condicion_comercial, indice_inflacion) tienen columnas de dimensión
+  // opcionales (linea_id/vendedor_id/cliente_id nullable) — Postgres
+  // trata NULL <> NULL en un índice único, así que un `onConflictDoNothing`
+  // fila por fila NO evita duplicar esas filas en una segunda corrida.
+  // Más simple y confiable: si esta empresa ya tiene ventas cargadas,
+  // asumimos que el seed ya corrió completo y no volvemos a insertar nada.
+  const conteoVentas = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.ventaItem)
+    .where(eq(schema.ventaItem.empresaId, empresaId))
+  const ventasExistentes = conteoVentas[0]?.n ?? 0
+  if (ventasExistentes > 0) {
+    console.log('⚠ La empresa demo ya tiene ventas cargadas — seed abortado para no duplicar objetivos/oportunidades/gestiones.')
+    console.log("  Para recargar desde cero: DELETE FROM empresa WHERE slug = 'nexo-demo'; (cascada) y volver a correr `npm run seed`.")
+    return
+  }
+
   // Usuarios
   console.log('→ Usuarios…')
   const usuarioIdPorDni = new Map<string, string>()

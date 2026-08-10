@@ -1,4 +1,4 @@
-import { and, asc, eq, max } from 'drizzle-orm'
+import { and, asc, eq, max, sql } from 'drizzle-orm'
 import type { Database } from '../../db/client'
 import { cliente, etapaPipeline, oportunidad, usuario } from '../../db/schema'
 import type { AuthContext } from '../../core/tenant'
@@ -28,7 +28,7 @@ export async function listarOportunidades(db: Database, ctx: AuthContext) {
       clienteId: oportunidad.clienteId,
       clienteNombre: cliente.razonSocial,
       vendedorId: oportunidad.vendedorId,
-      vendedorNombre: usuario.nombre,
+      vendedorNombre: sql<string>`${usuario.nombre} || ' ' || ${usuario.apellido}`,
       etapaId: oportunidad.etapaId,
       etapaCodigo: etapaPipeline.codigo,
       etapaTipo: etapaPipeline.tipo,

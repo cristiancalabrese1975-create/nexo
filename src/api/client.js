@@ -15,7 +15,13 @@ export function getAccessToken() {
   return accessToken
 }
 
-async function refrescarSesion() {
+// Exportada (no sólo de uso interno en el reintento tras 401): React
+// StrictMode invoca los efectos de montaje dos veces en desarrollo, así
+// que AuthContext también pasa por acá al restaurar sesión al arrancar
+// la app — si no compartieran este guard, las dos llamadas dispararían
+// dos /auth/refresh en paralelo, y como cada refresh rota (revoca) la
+// sesión usada, la segunda llegaría tarde y fallaría con 401.
+export async function refrescarSesion() {
   // Evita disparar varios /auth/refresh en paralelo si varios requests
   // pegan 401 al mismo tiempo — todos esperan la misma promesa.
   if (!refreshEnCurso) {

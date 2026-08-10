@@ -1,4 +1,4 @@
-import { api, apiFetch, setAccessToken } from './client'
+import { api, apiFetch, refrescarSesion, setAccessToken } from './client'
 
 // Las páginas que todavía no migraron de src/data/mockData (Agenda,
 // Clientes, Faro, Calendario) esperan `user.nombre` como "Nombre Apellido"
@@ -29,8 +29,11 @@ export async function logout() {
 /** Se llama al montar la app: intenta renovar sesión con la cookie httpOnly de refresh (silencioso, sin mostrar error si no hay sesión). */
 export async function intentarRestaurarSesion() {
   try {
-    const data = await apiFetch('/auth/refresh', { method: 'POST' })
-    setAccessToken(data.accessToken)
+    // Pasa por el mismo single-flight que usa el reintento-tras-401 —
+    // si React StrictMode dispara este efecto dos veces, la segunda
+    // llamada espera la misma promesa en vez de disparar un refresh
+    // nuevo que la rotación del primero dejaría inválido.
+    await refrescarSesion()
     const me = await api.get('/auth/me')
     return normalizarUsuario(me.usuario)
   } catch {

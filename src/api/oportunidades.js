@@ -1,8 +1,7 @@
 import { api } from './client'
 
 export async function listarEtapas() {
-  const data = await api.get('/oportunidades/etapas')
-  return data.etapas
+  return api.get('/oportunidades/etapas') // { etapas }
 }
 
 export async function listarOportunidades() {

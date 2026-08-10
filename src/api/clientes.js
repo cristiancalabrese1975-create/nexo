@@ -3,8 +3,7 @@ import { api } from './client'
 
 /** Sólo para selectores (GestionFormModal, filtros) — el backend ya scopea por rol (vendedor ve sólo su cartera). */
 export async function listarClientesResumen() {
-  const data = await api.get('/clientes')
-  return data.items
+  return api.get('/clientes') // { items, promedioEmpresa, ... }
 }
 
 export function useClientesSelector() {
