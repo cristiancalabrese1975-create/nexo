@@ -1,6 +1,6 @@
 # CRM 3.0 — Checklist del proyecto
 
-_Última actualización: 2026-08-07_
+_Última actualización: 2026-08-10_
 
 Este archivo se actualiza cada vez que resolvemos o agregamos un pendiente. Es el lugar para ver de un vistazo qué falta antes de que esto sea un producto en producción, vendible a empresas reales.
 
@@ -22,35 +22,38 @@ Este archivo se actualiza cada vez que resolvemos o agregamos un pendiente. Es e
 - Filtro global de período (año/mes o año completo) aplicado a toda la app.
 - Toggle global Pesos $ / Unidades.
 - Ordenamiento (mayor a menor) en todas las tablas de datos.
+- **Backend real** (`server/`): Node + TypeScript + Fastify + Drizzle + PostgreSQL, **multi-empresa desde el modelo de datos** (toda tabla de negocio aislada por `empresa_id`). Incluye: 20 tablas + vista materializada de venta mensual, login por DNI con contraseñas hasheadas (argon2) + JWT de acceso/refresh reales, permisos por rol (vendedor/gerente/admin), scoring de oportunidades y de desvío de cliente, clasificación ABC, importador de Excel contra las plantillas `Nexo_Historial_de_Ventas.xlsx` / `Nexo_Alta_de_Vendedores.xlsx` (con detección de duplicados y reporte de errores fila por fila), y un seed que carga la misma demo comercial ya persistida. Ver `server/README.md` para levantarlo (necesita una base Postgres — Neon recomendado, no hay Docker instalado en esta PC).
+- **Login real**: el DNI/clave ya no vive en el bundle del frontend — autentica contra la base de datos con la clave hasheada.
+- **Agenda y Pipeline conectados al backend**: las gestiones que carga el vendedor y los movimientos de etapa del Kanban ya **no se pierden al recargar** — se guardan de verdad.
 
 ---
 
 ## ⬜ Pendiente
 
 ### 🚀 Infraestructura / Deploy
-- [ ] Hospedar en un hosting real (Vercel/Netlify/VPS) — hoy sólo corre en esta PC.
-- [ ] Backend + base de datos real. **Hoy no existe backend**: todos los datos (ventas, clientes, cobranzas, agenda) son generados por fórmulas en el frontend al cargar la página.
-- [ ] Persistencia de lo que carga el vendedor: hoy las gestiones nuevas y las videollamadas agendadas **se pierden al recargar la página** (no hay dónde guardarlas todavía).
+- [ ] Hospedar el backend en un hosting real (Railway/Render) y el frontend (Vercel/Netlify) — hoy sólo corren en esta PC. El código ya está listo para ese deploy, sólo falta crear las cuentas y conectar.
+- [ ] Provisionar la base de datos real en Neon (o similar) — el esquema y las migraciones están listos, falta crear la cuenta y correr `npm run db:migrate` + `npm run seed` contra una base real (no se pudo verificar en este entorno por no tener acceso a Postgres).
 - [ ] Comprar un dominio propio.
-- [ ] Definir estrategia de backup una vez que haya base de datos real.
+- [ ] Definir estrategia de backup una vez que la base esté en producción.
+
+### 🖥️ Conectar el resto de las pantallas al backend
+Login, Agenda y Pipeline ya usan la API real. Falta el mismo trabajo en el resto — **Dashboard, Clientes, Líneas, SKUs, Cobranzas, Descuentos, Faro, Resumen Gerencial y Calendario siguen mostrando los datos de ejemplo de `src/data/mockData.js`** (la API para todas ellas ya existe y está probada — `GET /resumen`, `/clientes`, `/lineas`, `/productos`, `/cobranzas`, `/descuentos`, `/faro`, `/gerencial/*` — falta migrar cada pantalla para que consuma esos endpoints en vez del mock, página por página, verificando que los números coincidan).
 
 ### 🔌 Integraciones reales (hoy simuladas)
-- [ ] Zoom/Teams real: hoy el enlace es generado al azar y no crea una reunión real ni le llega nada al cliente. Falta conectar la API oficial de cada plataforma (requiere cuenta/credenciales de desarrollador) + envío de invitación real (email o WhatsApp).
+- [ ] Zoom/Teams real: hoy el enlace lo sigue generando el propio servidor de forma simulada, no crea una reunión real. Falta conectar la API oficial de cada plataforma (requiere cuenta/credenciales de desarrollador) + envío de invitación real (email o WhatsApp).
 - [ ] Notificaciones reales de "a gestionar hoy" fuera de la app (push al celular o email) — hoy sólo se ve dentro de la app.
-- [ ] Login real: hoy el DNI/clave está escrito en el propio código (visible en el navegador) — sirve para la demo, pero no es seguro para producción. Hay que migrar a autenticación real (backend + contraseñas hasheadas, o un proveedor como Auth0/Firebase).
-- [ ] Conexión con los datos reales de la empresa (ERP, planilla de ventas, sistema de facturación) en vez de los datos de ejemplo.
+- [ ] Conexión con los datos reales de la empresa (ERP, planilla de ventas, sistema de facturación) — el importador de Excel ya cubre el caso manual (planillas `Nexo_*.xlsx`); una integración directa con el sistema del cliente es el siguiente escalón.
 - [ ] Envío de reportes por email (ej. resumen semanal al gerente).
 
 ### ⚖️ Legal / Negocio
 - [ ] Términos y condiciones y política de privacidad (la app maneja datos de clientes y vendedores).
 - [ ] Definir el modelo de precios/licencia para vender el CRM a otras empresas (por vendedor, por empresa, mensual/anual).
 - [ ] Definir figura legal para facturar el servicio.
-- [ ] Pensar **multi-empresa**: hoy todos los datos son de una sola empresa ficticia. Si se vende a varias empresas, cada una necesita sus datos completamente aislados.
 
 ### 🧩 Producto / Funcionalidades
 - [ ] Exportar reportes a Excel/PDF.
-- [ ] Historial de auditoría (quién cambió qué y cuándo).
-- [ ] Permisos más finos (hoy sólo hay 2 roles: Vendedor y Gerente).
+- [ ] Historial de auditoría: el backend ya registra quién cambió qué y cuándo (tabla `auditoria`, se completa en cada alta/baja/cambio de etapa) — falta una pantalla en el frontend para consultarlo.
+- [ ] Permisos más finos (hoy el backend ya soporta 3 roles — vendedor/gerente/admin_empresa — falta exponer un ABM de usuarios en el frontend).
 - [ ] Carga de archivos/fotos desde la Agenda (ej. foto de la visita, comprobante firmado).
 - [ ] App instalable en el celular (PWA) para que el vendedor la use en la calle sin depender del navegador.
 - [ ] Piloto con una empresa real antes de salir a vender a más clientes.

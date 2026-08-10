@@ -5,7 +5,9 @@ import { GestionFormModal } from '../components/agenda/GestionFormModal'
 import { usePeriod } from '../context/PeriodContext'
 import { useAuth } from '../context/AuthContext'
 import { useAgenda } from '../context/AgendaContext'
-import { vendedores, indexOfFecha, clientesAGestionarHoy, HOY_DEMO_ISO } from '../data/mockData'
+import { useAgendaHoy } from '../api/hooks'
+import { useClientesSelector } from '../api/clientes'
+import { indexOfFecha } from '../data/mockData'
 
 const estadoStyles = {
   Realizada: 'bg-emerald-50 text-emerald-700',
@@ -14,6 +16,7 @@ const estadoStyles = {
 }
 
 const iconosPorTipo = { Visita: MapPin, Llamada: Phone, Videollamada: Video }
+const ETIQUETA_MOTIVO = { programada: 'agendada', seguimiento: 'de seguimiento' }
 
 function fechaLarga(fechaISO) {
   return new Date(`${fechaISO}T00:00:00`).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -23,7 +26,15 @@ export default function Agenda() {
   const { user } = useAuth()
   const { selectedIndices, label } = usePeriod()
   const { actividades } = useAgenda()
+  const { data: agendaHoy } = useAgendaHoy()
+  const { data: clientesResp } = useClientesSelector()
   const esVendedor = user?.rol === 'vendedor'
+
+  const vendedoresDisponibles = useMemo(() => {
+    const vistos = new Set()
+    for (const c of clientesResp?.items ?? []) if (c.vendedorNombre) vistos.add(c.vendedorNombre)
+    return [...vistos]
+  }, [clientesResp])
 
   const [filtroVendedor, setFiltroVendedor] = useState(esVendedor ? user.nombre : 'Todos')
   const [formOpen, setFormOpen] = useState(false)
@@ -31,9 +42,13 @@ export default function Agenda() {
   const [confirmacion, setConfirmacion] = useState(null)
 
   const pendientesHoy = useMemo(() => {
-    const vendedorFiltro = esVendedor ? user.nombre : filtroVendedor === 'Todos' ? null : filtroVendedor
-    return clientesAGestionarHoy(vendedorFiltro)
-  }, [actividades, esVendedor, user, filtroVendedor])
+    const items = agendaHoy?.items ?? []
+    if (esVendedor) return items // el backend ya scopea la propia cartera
+    if (filtroVendedor === 'Todos') return items
+    return items.filter((i) => i.vendedorNombre === filtroVendedor)
+  }, [agendaHoy, esVendedor, filtroVendedor])
+
+  const hoy = agendaHoy?.hoy
 
   const filtradas = useMemo(() => {
     return actividades
@@ -46,8 +61,8 @@ export default function Agenda() {
   const llamadasRealizadas = filtradas.filter((a) => a.tipo === 'Llamada' && a.estado === 'Realizada').length
   const pendientes = filtradas.filter((a) => a.estado === 'Pendiente' || a.estado === 'Reprogramada').length
 
-  function abrirForm(clienteCodigo = '') {
-    setClienteForm(clienteCodigo)
+  function abrirForm(clienteId = '') {
+    setClienteForm(clienteId)
     setFormOpen(true)
   }
 
@@ -105,27 +120,26 @@ export default function Agenda() {
             </p>
           </div>
           <div className="space-y-2">
-            {pendientesHoy.map(({ cliente, motivo, ultima, fechaReferencia }) => {
-              const vencida = fechaReferencia < HOY_DEMO_ISO
+            {pendientesHoy.map((item) => {
+              const vencida = hoy && item.fechaReferencia < hoy
               return (
                 <button
-                  key={cliente.codigo}
-                  onClick={() => abrirForm(cliente.codigo)}
+                  key={item.clienteId}
+                  onClick={() => abrirForm(item.clienteId)}
                   className="w-full flex items-center justify-between gap-3 bg-white rounded-lg border border-amber-100 px-3 py-2.5 text-left hover:border-amber-300 transition-colors"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-slate-800 truncate">{cliente.razonSocial}</p>
+                      <p className="text-sm font-medium text-slate-800 truncate">{item.clienteNombre}</p>
                       {!esVendedor && (
                         <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">
-                          {cliente.vendedorAsignado}
+                          {item.vendedorNombre}
                         </span>
                       )}
                     </div>
                     <p className="text-xs text-slate-500">
-                      {motivo === 'programada'
-                        ? `${ultima.tipo} agendada para el ${fechaLarga(ultima.fecha)}`
-                        : `Seguimiento de "${ultima.tipo.toLowerCase()}" del ${fechaLarga(ultima.fecha)}, previsto para el ${fechaLarga(fechaReferencia)}`}
+                      {item.tipoUltima} {ETIQUETA_MOTIVO[item.motivo]}
+                      {item.motivo === 'seguimiento' ? ` · previsto para el ${fechaLarga(item.fechaReferencia)}` : ` para el ${fechaLarga(item.fechaUltima)}`}
                     </p>
                   </div>
                   <span
@@ -166,7 +180,7 @@ export default function Agenda() {
             className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             <option value="Todos">Todos</option>
-            {vendedores.map((v) => (
+            {vendedoresDisponibles.map((v) => (
               <option key={v} value={v}>
                 {v}
               </option>
@@ -230,7 +244,7 @@ export default function Agenda() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         defaultClienteCodigo={clienteForm}
-        defaultFecha={HOY_DEMO_ISO}
+        defaultFecha={hoy}
         esVendedor={esVendedor}
         nombreVendedor={user?.nombre}
         onSaved={handleSaved}

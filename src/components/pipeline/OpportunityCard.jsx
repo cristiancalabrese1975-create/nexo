@@ -2,7 +2,6 @@ import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { Flame, Clock } from 'lucide-react'
 import { formatCurrency } from '../../utils/format'
-import { scoreOportunidad } from '../../data/mockData'
 
 function estiloPrioridad(score) {
   if (score >= 70) return 'bg-emerald-50 text-emerald-700'
@@ -31,7 +30,7 @@ export function OpportunityCard({ op, umbral }) {
     .slice(0, 2)
     .toUpperCase()
 
-  const prioridad = scoreOportunidad(op)
+  const prioridad = op.prioridad
   const vencido = prioridad && umbral != null && (prioridad.diasSinContacto === null || prioridad.diasSinContacto > umbral)
 
   return (

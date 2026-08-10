@@ -1,34 +1,46 @@
-import { createContext, useContext, useState } from 'react'
-import { usuarios } from '../data/mockData'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { login as apiLogin, logout as apiLogout, intentarRestaurarSesion } from '../api/auth'
+import { ApiError } from '../api/client'
 
 const AuthContext = createContext(null)
 
-function loadStoredUser() {
-  try {
-    const raw = localStorage.getItem('crm3_user')
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(loadStoredUser)
+  const [user, setUser] = useState(null)
+  // El access token vive sólo en memoria (ver api/client.js); al recargar
+  // la página no queda nada en localStorage — la sesión se restaura con
+  // la cookie httpOnly de refresh, o si no hay, vuelve al Login.
+  const [cargandoSesion, setCargandoSesion] = useState(true)
 
-  function login(dni, clave) {
-    const found = usuarios.find((u) => u.dni === dni.trim() && u.clave === clave)
-    if (!found) return false
-    setUser(found)
-    localStorage.setItem('crm3_user', JSON.stringify(found))
-    return true
+  useEffect(() => {
+    let cancelado = false
+    intentarRestaurarSesion().then((usuario) => {
+      if (!cancelado) {
+        setUser(usuario)
+        setCargandoSesion(false)
+      }
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [])
+
+  async function login(dni, clave) {
+    try {
+      const usuario = await apiLogin(dni, clave)
+      setUser(usuario)
+      return true
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) return false
+      throw err
+    }
   }
 
-  function logout() {
+  async function logout() {
+    await apiLogout().catch(() => {})
     setUser(null)
-    localStorage.removeItem('crm3_user')
   }
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, login, logout, cargandoSesion }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

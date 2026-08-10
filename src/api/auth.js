@@ -1,0 +1,44 @@
+import { api, apiFetch, setAccessToken } from './client'
+
+// Las páginas que todavía no migraron de src/data/mockData (Agenda,
+// Clientes, Faro, Calendario) esperan `user.nombre` como "Nombre Apellido"
+// completo (mismo formato que `vendedorAsignado` en el mock) y
+// `user.iniciales` — se normaliza acá para no romperlas mientras dura la
+// migración página por página.
+function normalizarUsuario(u) {
+  if (!u) return null
+  const nombreCompleto = `${u.nombre} ${u.apellido}`
+  const iniciales = `${u.nombre[0] ?? ''}${u.apellido[0] ?? ''}`.toUpperCase()
+  return { ...u, nombre: nombreCompleto, iniciales }
+}
+
+export async function login(dni, clave) {
+  const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ dni, clave }) })
+  setAccessToken(data.accessToken)
+  return normalizarUsuario(data.usuario)
+}
+
+export async function logout() {
+  try {
+    await apiFetch('/auth/logout', { method: 'POST' })
+  } finally {
+    setAccessToken(null)
+  }
+}
+
+/** Se llama al montar la app: intenta renovar sesión con la cookie httpOnly de refresh (silencioso, sin mostrar error si no hay sesión). */
+export async function intentarRestaurarSesion() {
+  try {
+    const data = await apiFetch('/auth/refresh', { method: 'POST' })
+    setAccessToken(data.accessToken)
+    const me = await api.get('/auth/me')
+    return normalizarUsuario(me.usuario)
+  } catch {
+    return null
+  }
+}
+
+export async function me() {
+  const data = await api.get('/auth/me')
+  return normalizarUsuario(data.usuario)
+}

@@ -23,7 +23,18 @@ function RequireGerente({ children }) {
 }
 
 export default function App() {
-  const { user } = useAuth()
+  const { user, cargandoSesion } = useAuth()
+
+  // Mientras se intenta restaurar la sesión con la cookie de refresh, no
+  // mostramos el Login todavía — evita el parpadeo de login→dashboard en
+  // cada recarga de página para un usuario que ya tenía sesión activa.
+  if (cargandoSesion) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-slate-400">
+        Cargando…
+      </div>
+    )
+  }
 
   if (!user) return <Login />
 

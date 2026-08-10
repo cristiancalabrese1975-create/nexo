@@ -4,16 +4,37 @@ import { AlertTriangle } from 'lucide-react'
 import { Column } from '../components/pipeline/Column'
 import { Card } from '../components/ui/Card'
 import { usePeriod } from '../context/PeriodContext'
-import { etapasPipeline, oportunidades as initialOportunidades, indexOfFecha, scoreOportunidad } from '../data/mockData'
+import { useEtapas, useOportunidades, useCambiarEtapaOportunidad } from '../api/hooks'
+import { indexOfFecha } from '../data/mockData'
 import { formatCurrency } from '../utils/format'
 
 const UMBRAL_OPCIONES = [5, 10, 15, 20, 30]
 
+// El backend ya devuelve `prioridad` calculada; acá sólo se adapta el
+// nombre de un par de campos al shape que esperan Column/OpportunityCard.
+function adaptarOportunidad(o) {
+  return {
+    id: o.id,
+    titulo: o.titulo,
+    cliente: o.clienteNombre,
+    vendedor: o.vendedorNombre,
+    valor: o.valor,
+    etapa: o.etapaId,
+    fecha: o.fechaCierre ?? o.fechaEstimadaCierre,
+    prioridad: o.prioridad,
+  }
+}
+
 export default function Pipeline() {
-  const [oportunidades, setOportunidades] = useState(initialOportunidades)
+  const { data: etapasResp } = useEtapas()
+  const { data: oportunidadesResp, isLoading } = useOportunidades()
+  const cambiarEtapa = useCambiarEtapaOportunidad()
   const [orden, setOrden] = useState('prioridad') // 'prioridad' | 'fecha'
   const [umbral, setUmbral] = useState(15)
   const { selectedIndices, label } = usePeriod()
+
+  const etapasPipeline = etapasResp?.etapas ?? []
+  const oportunidades = useMemo(() => (oportunidadesResp?.items ?? []).map(adaptarOportunidad), [oportunidadesResp])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -24,33 +45,34 @@ export default function Pipeline() {
   function handleDragEnd(event) {
     const { active, over } = event
     if (!over) return
-    const nuevaEtapa = over.id
-    setOportunidades((prev) =>
-      prev.map((op) => (op.id === active.id ? { ...op, etapa: nuevaEtapa } : op)),
-    )
+    const oportunidadActual = oportunidades.find((o) => o.id === active.id)
+    if (oportunidadActual?.etapa === over.id) return // soltada en la misma columna
+    cambiarEtapa.mutate({ id: active.id, etapaId: over.id })
   }
 
   const enPeriodo = useMemo(
-    () => oportunidades.filter((o) => selectedIndices.includes(indexOfFecha(o.fecha))),
+    () => oportunidades.filter((o) => o.fecha && selectedIndices.includes(indexOfFecha(o.fecha))),
     [oportunidades, selectedIndices],
   )
 
-  const totalPipeline = enPeriodo
-    .filter((o) => o.etapa !== 'ganado' && o.etapa !== 'perdido')
-    .reduce((acc, o) => acc + o.valor, 0)
-  const totalGanado = enPeriodo.filter((o) => o.etapa === 'ganado').reduce((acc, o) => acc + o.valor, 0)
+  const etapasPorId = useMemo(() => Object.fromEntries(etapasPipeline.map((e) => [e.id, e])), [etapasPipeline])
+  const esFinal = (etapaId) => etapasPorId[etapaId]?.tipo === 'ganada' || etapasPorId[etapaId]?.tipo === 'perdida'
+  const esGanada = (etapaId) => etapasPorId[etapaId]?.tipo === 'ganada'
 
-  // Automatización simple: cualquier oportunidad abierta (en cualquier
-  // período) cuyo cliente no tiene contacto reciente registrado en la
-  // Agenda. Es el equivalente liviano a los "recordatorios de actividad"
-  // de un CRM grande, sin necesitar backend ni triggers reales.
+  const totalPipeline = enPeriodo.filter((o) => !esFinal(o.etapa)).reduce((acc, o) => acc + o.valor, 0)
+  const totalGanado = enPeriodo.filter((o) => esGanada(o.etapa)).reduce((acc, o) => acc + o.valor, 0)
+
+  // Oportunidades abiertas (en cualquier período) sin contacto reciente
+  // registrado en la Agenda — mismo criterio que la demo, ahora sobre
+  // datos reales de gestión.
   const estancadas = useMemo(() => {
     return oportunidades
-      .filter((o) => o.etapa !== 'ganado' && o.etapa !== 'perdido')
-      .map((o) => ({ op: o, prioridad: scoreOportunidad(o) }))
-      .filter(({ prioridad }) => prioridad && (prioridad.diasSinContacto === null || prioridad.diasSinContacto > umbral))
+      .filter((o) => o.prioridad)
+      .filter((o) => o.prioridad.diasSinContacto === null || o.prioridad.diasSinContacto > umbral)
       .sort((a, b) => (b.prioridad.diasSinContacto ?? 9999) - (a.prioridad.diasSinContacto ?? 9999))
   }, [oportunidades, umbral])
+
+  if (isLoading) return <p className="text-sm text-slate-400">Cargando pipeline…</p>
 
   return (
     <div className="space-y-4">
@@ -85,7 +107,7 @@ export default function Pipeline() {
           <p className="text-sm text-slate-500">Todas las oportunidades abiertas tienen contacto reciente. 👍</p>
         ) : (
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {estancadas.map(({ op, prioridad }) => (
+            {estancadas.map((op) => (
               <div
                 key={op.id}
                 className="flex items-center justify-between gap-3 bg-white rounded-lg border border-amber-100 px-3 py-2.5"
@@ -99,7 +121,7 @@ export default function Pipeline() {
                   </p>
                 </div>
                 <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">
-                  {prioridad.diasSinContacto === null ? 'Nunca contactado' : `${prioridad.diasSinContacto} días sin contacto`}
+                  {op.prioridad.diasSinContacto === null ? 'Nunca contactado' : `${op.prioridad.diasSinContacto} días sin contacto`}
                 </span>
               </div>
             ))}
@@ -110,9 +132,7 @@ export default function Pipeline() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card className="p-4">
           <p className="text-xs font-medium text-slate-500 mb-1">Oportunidades abiertas</p>
-          <p className="text-xl font-bold text-slate-900">
-            {enPeriodo.filter((o) => o.etapa !== 'ganado' && o.etapa !== 'perdido').length}
-          </p>
+          <p className="text-xl font-bold text-slate-900">{enPeriodo.filter((o) => !esFinal(o.etapa)).length}</p>
         </Card>
         <Card className="p-4">
           <p className="text-xs font-medium text-slate-500 mb-1">Valor en pipeline</p>
@@ -124,9 +144,7 @@ export default function Pipeline() {
         </Card>
         <Card className="p-4">
           <p className="text-xs font-medium text-slate-500 mb-1">Vendedores activos</p>
-          <p className="text-xl font-bold text-slate-900">
-            {new Set(enPeriodo.map((o) => o.vendedor)).size}
-          </p>
+          <p className="text-xl font-bold text-slate-900">{new Set(enPeriodo.map((o) => o.vendedor)).size}</p>
         </Card>
       </div>
 
@@ -154,8 +172,8 @@ export default function Pipeline() {
             const opsEtapa = enPeriodo.filter((o) => o.etapa === etapa.id)
             const ordenadas =
               orden === 'prioridad'
-                ? [...opsEtapa].sort((a, b) => (scoreOportunidad(b)?.score ?? -1) - (scoreOportunidad(a)?.score ?? -1))
-                : [...opsEtapa].sort((a, b) => a.fecha.localeCompare(b.fecha))
+                ? [...opsEtapa].sort((a, b) => (b.prioridad?.score ?? -1) - (a.prioridad?.score ?? -1))
+                : [...opsEtapa].sort((a, b) => (a.fecha ?? '').localeCompare(b.fecha ?? ''))
             return <Column key={etapa.id} etapa={etapa} oportunidades={ordenadas} umbral={umbral} />
           })}
         </div>

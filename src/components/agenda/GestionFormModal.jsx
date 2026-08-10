@@ -1,26 +1,23 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { X, Mic, Square } from 'lucide-react'
 import { Card } from '../ui/Card'
 import { useAgenda } from '../../context/AgendaContext'
-import { clientes, vendedores, HOY_DEMO_ISO } from '../../data/mockData'
+import { useClientesSelector } from '../../api/clientes'
 
 const SpeechRecognitionAPI =
   typeof window !== 'undefined' ? window.SpeechRecognition || window.webkitSpeechRecognition : null
 
-function generarEnlaceReunion(plataforma) {
-  const id = Math.floor(100_000_000 + Math.random() * 900_000_000)
-  return plataforma === 'Teams'
-    ? `https://teams.microsoft.com/l/meetup-join/19%3ameeting_${id}%40thread.v2/0`
-    : `https://zoom.us/j/${id}`
+function hoyISO() {
+  return new Date().toISOString().slice(0, 10)
 }
 
 function emptyForm(vendedorFijo, clienteCodigo, fecha, hora, tipo, notas) {
   return {
     clienteCodigo: clienteCodigo ?? '',
-    vendedor: vendedorFijo ?? vendedores[0],
+    vendedor: vendedorFijo ?? '',
     tipo: tipo || 'Visita',
     plataforma: 'Zoom',
-    fecha: fecha || HOY_DEMO_ISO,
+    fecha: fecha || hoyISO(),
     hora: hora || '09:00',
     estado: 'Pendiente',
     notas: notas || '',
@@ -41,9 +38,20 @@ export function GestionFormModal({
   onSaved,
 }) {
   const { addActividad } = useAgenda()
+  // El backend ya scopea por rol: si quien abre el modal es vendedor, la
+  // API devuelve sólo su propia cartera — no hace falta filtrar de nuevo acá.
+  const { data: clientesResp } = useClientesSelector()
+  const clientesDisponibles = clientesResp?.items ?? []
+  const vendedoresDisponibles = useMemo(() => {
+    const vistos = new Map()
+    for (const c of clientesDisponibles) if (c.vendedorId) vistos.set(c.vendedorId, c.vendedorNombre)
+    return [...vistos.entries()].map(([id, nombre]) => ({ id, nombre }))
+  }, [clientesDisponibles])
+
   const [form, setForm] = useState(() =>
     emptyForm(esVendedor ? nombreVendedor : undefined, defaultClienteCodigo, defaultFecha, defaultHora, defaultTipo, defaultNotas),
   )
+  const [guardando, setGuardando] = useState(false)
   const [dictando, setDictando] = useState(false)
   const recognitionRef = useRef(null)
 
@@ -56,8 +64,6 @@ export function GestionFormModal({
   }, [open, defaultClienteCodigo, defaultFecha, defaultHora, defaultTipo, defaultNotas, esVendedor, nombreVendedor])
 
   useEffect(() => () => recognitionRef.current?.stop(), [])
-
-  const clientesDisponibles = esVendedor ? clientes.filter((c) => c.vendedorAsignado === nombreVendedor) : clientes
 
   if (!open) return null
 
@@ -85,28 +91,31 @@ export function GestionFormModal({
     setDictando(true)
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.clienteCodigo) return
-    const cliente = clientes.find((c) => c.codigo === form.clienteCodigo)
-    const esVideollamada = form.tipo === 'Videollamada'
-    const enlace = esVideollamada ? generarEnlaceReunion(form.plataforma) : undefined
-    const nueva = {
-      id: `a${Date.now()}`,
-      clienteCodigo: form.clienteCodigo,
-      cliente: cliente?.razonSocial ?? '',
-      vendedor: form.vendedor,
-      tipo: form.tipo,
-      fecha: form.fecha,
-      hora: form.hora,
-      estado: form.estado,
-      notas: form.notas.trim(),
-      ...(form.estado === 'Realizada' && form.proximaGestion ? { proximaGestion: form.proximaGestion } : {}),
-      ...(esVideollamada ? { plataforma: form.plataforma, enlace } : {}),
+    if (!form.clienteCodigo || guardando) return
+    const cliente = clientesDisponibles.find((c) => c.id === form.clienteCodigo)
+    const vendedorSeleccionado = esVendedor ? null : vendedoresDisponibles.find((v) => v.nombre === form.vendedor)
+    setGuardando(true)
+    try {
+      const nueva = await addActividad({
+        clienteCodigo: form.clienteCodigo,
+        cliente: cliente?.razonSocial ?? '',
+        vendedor: esVendedor ? nombreVendedor : form.vendedor,
+        vendedorId: vendedorSeleccionado?.id,
+        tipo: form.tipo,
+        fecha: form.fecha,
+        hora: form.hora,
+        estado: form.estado,
+        notas: form.notas.trim(),
+        ...(form.estado === 'Realizada' && form.proximaGestion ? { proximaGestion: form.proximaGestion } : {}),
+        ...(form.tipo === 'Videollamada' ? { plataforma: form.plataforma } : {}),
+      })
+      onClose()
+      onSaved?.(nueva)
+    } finally {
+      setGuardando(false)
     }
-    addActividad(nueva)
-    onClose()
-    onSaved?.(nueva)
   }
 
   return (
@@ -129,7 +138,7 @@ export function GestionFormModal({
             >
               <option value="">Seleccionar cliente…</option>
               {clientesDisponibles.map((c) => (
-                <option key={c.codigo} value={c.codigo}>
+                <option key={c.id} value={c.id}>
                   {c.razonSocial}
                 </option>
               ))}
@@ -144,9 +153,10 @@ export function GestionFormModal({
                 onChange={(e) => setForm({ ...form, vendedor: e.target.value })}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                {vendedores.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
+                <option value="">Seleccionar vendedor…</option>
+                {vendedoresDisponibles.map((v) => (
+                  <option key={v.id} value={v.nombre}>
+                    {v.nombre}
                   </option>
                 ))}
               </select>
@@ -274,9 +284,10 @@ export function GestionFormModal({
 
           <button
             type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg py-2.5 transition-colors"
+            disabled={guardando}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg py-2.5 transition-colors"
           >
-            Guardar gestión
+            {guardando ? 'Guardando…' : 'Guardar gestión'}
           </button>
         </form>
       </Card>

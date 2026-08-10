@@ -9,20 +9,30 @@ export default function Login() {
   const [dni, setDni] = useState('')
   const [clave, setClave] = useState('')
   const [error, setError] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  async function intentarLogin(dniVal, claveVal) {
+    setEnviando(true)
+    setError('')
+    try {
+      const ok = await login(dniVal, claveVal)
+      if (!ok) setError('DNI o clave incorrectos. Probá con uno de los accesos de demo.')
+    } catch {
+      setError('No se pudo conectar con el servidor. Intentá de nuevo en unos segundos.')
+    } finally {
+      setEnviando(false)
+    }
+  }
 
   function handleSubmit(e) {
     e.preventDefault()
-    const ok = login(dni, clave)
-    if (!ok) {
-      setError('DNI o clave incorrectos. Probá con uno de los accesos de demo.')
-    }
+    intentarLogin(dni, clave)
   }
 
   function usarDemo(u) {
     setDni(u.dni)
     setClave(u.clave)
-    setError('')
-    login(u.dni, u.clave)
+    intentarLogin(u.dni, u.clave)
   }
 
   return (
@@ -72,10 +82,11 @@ export default function Login() {
             {error && <p className="text-sm text-rose-600">{error}</p>}
             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg py-2.5 transition-colors"
+              disabled={enviando}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-medium text-sm rounded-lg py-2.5 transition-colors"
             >
               <LogIn size={16} />
-              Ingresar
+              {enviando ? 'Ingresando…' : 'Ingresar'}
             </button>
           </form>
 
