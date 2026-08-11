@@ -5,7 +5,7 @@ import { Column } from '../components/pipeline/Column'
 import { Card } from '../components/ui/Card'
 import { usePeriod } from '../context/PeriodContext'
 import { useEtapas, useOportunidades, useCambiarEtapaOportunidad } from '../api/hooks'
-import { indexOfFecha } from '../data/mockData'
+import { indexOfFecha } from '../data/periods'
 import { formatCurrency } from '../utils/format'
 
 const UMBRAL_OPCIONES = [5, 10, 15, 20, 30]

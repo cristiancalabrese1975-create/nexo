@@ -6,25 +6,12 @@ import { Sparkline } from '../components/ui/Sparkline'
 import { SortableTh } from '../components/ui/SortableTh'
 import { usePeriod } from '../context/PeriodContext'
 import { useValueMode } from '../context/ValueModeContext'
-import {
-  skus,
-  lineas,
-  vendedores,
-  clientes,
-  valorSku,
-  serieDiariaSku,
-  clasificarSkusABC,
-  vendedoresDelSku,
-  clientesPorSku,
-  valorCliente,
-  clasificarClientesABC,
-} from '../data/mockData'
+import { useCatalogoBase, useReporteDiario } from '../api/reportes'
+import { createLiveData, serieDiariaSku, EMPTY_BASE } from '../data/liveData'
 import { PERIODS, periodShortLabel, diasEnMes } from '../data/periods'
 import { formatValor } from '../utils/format'
 import { compareValues, nextSort } from '../utils/sort'
 
-const lineasOpciones = ['Todas', ...lineas.map((l) => l.nombre)]
-const vendedoresOpciones = ['Todos', ...vendedores]
 const TRAILING = 5
 
 function colorRK(t) {
@@ -55,6 +42,25 @@ export default function Skus() {
   const [evolucionFiltro, setEvolucionFiltro] = useState(null)
   const { year, month, selectedIndices, primaryIndex, comparisonIndices, isAnnual, label } = usePeriod()
   const { modo } = useValueMode()
+  const { data: base, isLoading } = useCatalogoBase()
+  const { data: diario } = useReporteDiario(year, month, !isAnnual && vista === 'diario')
+
+  // Ver nota en Lineas.jsx: se usa EMPTY_BASE en vez de cortar acá con un
+  // return, para no romper el orden de hooks (useMemo) de más abajo.
+  const {
+    skus,
+    lineas,
+    vendedores,
+    clientes,
+    valorSku,
+    clasificarSkusABC,
+    vendedoresDelSku,
+    clientesPorSku,
+    valorCliente,
+    clasificarClientesABC,
+  } = createLiveData(base ?? EMPTY_BASE)
+  const lineasOpciones = ['Todas', ...lineas.map((l) => l.nombre)]
+  const vendedoresOpciones = ['Todos', ...vendedores]
 
   function toggleSku(id) {
     setSkuSeleccionado((prev) => (prev === id ? null : id))
@@ -198,7 +204,7 @@ export default function Skus() {
     : []
 
   const dias = diasEnMes(year, isAnnual ? new Date().getMonth() + 1 : month)
-  const seriesDiarias = !isAnnual && vista === 'diario' ? filtrados.map((s) => serieDiariaSku(s.id, year, month, modo)) : []
+  const seriesDiarias = !isAnnual && vista === 'diario' ? filtrados.map((s) => serieDiariaSku(diario, s.id, year, month, modo)) : []
   const filasDiarias = seriesDiarias.length
     ? Array.from({ length: dias }, (_, i) => {
         const valor = seriesDiarias.reduce((acc, serie) => acc + (serie[i]?.venta ?? 0), 0)
@@ -213,6 +219,10 @@ export default function Skus() {
       compareValues(sortDiario.key === 'dia' ? a.day : a.valor, sortDiario.key === 'dia' ? b.day : b.valor, sortDiario.dir),
     )
   }, [filasDiarias, sortDiario])
+
+  if (isLoading || !base) {
+    return <p className="text-sm text-slate-400">Cargando SKU…</p>
+  }
 
   return (
     <div className="space-y-4">

@@ -4,21 +4,9 @@ import { ChevronDown, ChevronUp, TrendingDown, Wallet, Clock, Tag, MessageCircle
 import { Card } from '../components/ui/Card'
 import { usePeriod } from '../context/PeriodContext'
 import { useAuth } from '../context/AuthContext'
-import {
-  clientes,
-  vendedores,
-  ventaClienteRango,
-  lineasPreferidasPorCliente,
-  descuentos,
-  moraPorCliente,
-  diasSinContactoCliente,
-  scoreDesvioCliente,
-  whatsappVendedor,
-} from '../data/mockData'
-import { indexOfPeriod, PERIODS } from '../data/periods'
+import { useFaro } from '../api/faro'
+import { PERIODS } from '../data/periods'
 import { formatCurrency } from '../utils/format'
-
-const descuentosPorCliente = Object.fromEntries(descuentos.map((d) => [d.grupo, d]))
 
 function severidad(score) {
   if (score >= 60) return 'alta'
@@ -34,12 +22,18 @@ const severidadEstilos = {
 
 function razonesDe(f, isAnnual) {
   const razones = []
-  if (f.sinFacturacion) razones.push('Sin compras este período')
+  if (f.venta === 0) razones.push('Sin compras este período')
   else if (f.evolucionPct < 0) razones.push(`Cayó ${Math.abs(f.evolucionPct)}% vs. ${isAnnual ? 'año anterior' : 'mes anterior'}`)
   if (f.mora.saldoTotal > 0) razones.push(`Mora: ${formatCurrency(f.mora.saldoTotal)} (${f.mora.diasMax} días)`)
-  if (f.diasContacto === null) razones.push('Sin gestión registrada')
-  else if (f.diasContacto > 30) razones.push(`${f.diasContacto} días sin contacto`)
+  if (f.diasSinContacto === null) razones.push('Sin gestión registrada')
+  else if (f.diasSinContacto > 30) razones.push(`${f.diasSinContacto} días sin contacto`)
   return razones
+}
+
+function whatsappUrl(nombreVendedor, whatsappPorNombre, mensaje) {
+  const numero = whatsappPorNombre[nombreVendedor]
+  if (!numero) return null
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`
 }
 
 // Informe de texto con las cuentas de prioridad alta/media de un vendedor,
@@ -61,52 +55,30 @@ function construirInformeWhatsApp(vendedor, filasVendedor, isAnnual) {
 }
 
 export default function Faro() {
-  const { selectedIndices, comparisonIndices, primaryIndex, isAnnual, label } = usePeriod()
+  const { selectedIndices, comparisonIndices, isAnnual, label } = usePeriod()
   const { user } = useAuth()
   const esGerente = user?.rol === 'gerente'
 
   const [vendedorSeleccionado, setVendedorSeleccionado] = useState(esGerente ? 'Todos' : user?.nombre)
   const [severidadFiltro, setSeveridadFiltro] = useState(null) // 'alta' | 'media' | 'baja' | null
-  const [expandido, setExpandido] = useState(null) // código de cliente
+  const [expandido, setExpandido] = useState(null)
+
+  const periodos = useMemo(() => selectedIndices.map((i) => PERIODS[i]?.key).filter(Boolean), [selectedIndices])
+  const comparar = useMemo(() => comparisonIndices.map((i) => PERIODS[i]?.key).filter(Boolean), [comparisonIndices])
+  const { data, isLoading } = useFaro({ periodos, comparar, modo: 'pesos' })
 
   function toggleSeveridad(s) {
     setSeveridadFiltro((prev) => (prev === s ? null : s))
   }
 
-  const clientesDelAlcance = useMemo(
-    () => (vendedorSeleccionado === 'Todos' ? clientes : clientes.filter((c) => c.vendedorAsignado === vendedorSeleccionado)),
-    [vendedorSeleccionado],
-  )
+  const items = data?.items ?? []
+  const vendedoresWhatsapp = data?.vendedoresWhatsapp ?? []
+  const whatsappPorNombre = Object.fromEntries(vendedoresWhatsapp.map((v) => [v.nombre, v.whatsapp]))
+  const vendedores = vendedoresWhatsapp.map((v) => v.nombre)
 
-  const filas = useMemo(() => {
-    return clientesDelAlcance
-      .map((c) => {
-        const actual = ventaClienteRango(c.codigo, selectedIndices)
-        const anterior = comparisonIndices.length ? ventaClienteRango(c.codigo, comparisonIndices) : 0
-        const evolucionPct = anterior > 0 ? Math.round((actual / anterior - 1) * 100) : actual > 0 ? 100 : 0
-        const sinFacturacion = actual === 0
-        const mora = moraPorCliente(c.razonSocial)
-        const diasContacto = diasSinContactoCliente(c.razonSocial)
-        const descuentoInfo = descuentosPorCliente[c.codigo]
-        const descuentoVigente =
-          descuentoInfo && descuentoInfo.descuento > 0 && indexOfPeriod(descuentoInfo.vigenteDesde) <= primaryIndex ? descuentoInfo : null
-        const score = scoreDesvioCliente({ evolucionPct, mora, diasSinContacto: diasContacto })
-        return {
-          ...c,
-          actual,
-          anterior,
-          evolucionPct,
-          sinFacturacion,
-          mora,
-          diasContacto,
-          descuentoVigente,
-          lineasHabituales: lineasPreferidasPorCliente[c.codigo] ?? [],
-          score,
-          nivel: severidad(score),
-        }
-      })
-      .sort((a, b) => b.score - a.score)
-  }, [clientesDelAlcance, selectedIndices, comparisonIndices, primaryIndex])
+  const clientesDelAlcance = vendedorSeleccionado === 'Todos' ? items : items.filter((c) => c.vendedorNombre === vendedorSeleccionado)
+
+  const filas = clientesDelAlcance.map((f) => ({ ...f, nivel: severidad(f.score) })).sort((a, b) => b.score - a.score)
 
   const composicion = { alta: 0, media: 0, baja: 0 }
   filas.forEach((f) => {
@@ -119,6 +91,10 @@ export default function Faro() {
   ]
 
   const filasVisibles = severidadFiltro ? filas.filter((f) => f.nivel === severidadFiltro) : filas
+
+  if (isLoading || !data) {
+    return <p className="text-sm text-slate-400">Cargando Faro…</p>
+  }
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -215,7 +191,7 @@ export default function Faro() {
             vendedorSeleccionado !== 'Todos' &&
             (() => {
               const mensaje = construirInformeWhatsApp(vendedorSeleccionado, filas, isAnnual)
-              const url = whatsappVendedor(vendedorSeleccionado, mensaje)
+              const url = whatsappUrl(vendedorSeleccionado, whatsappPorNombre, mensaje)
               return (
                 url && (
                   <a
@@ -253,15 +229,14 @@ export default function Faro() {
                       </div>
                       <p className="text-xs text-slate-400 mb-2 flex items-center gap-1.5">
                         <span>
-                          {f.codigo} · {f.categoria}
-                          {vendedorSeleccionado === 'Todos' ? ` · ${f.vendedorAsignado}` : ''}
+                          {f.codigo} {vendedorSeleccionado === 'Todos' ? ` · ${f.vendedorNombre}` : ''}
                         </span>
                         {vendedorSeleccionado === 'Todos' &&
                           (() => {
-                            const mensaje = `Hola ${f.vendedorAsignado.split(' ')[0]}! Vi en Faro que ${f.razonSocial} necesita atención${
+                            const mensaje = `Hola ${f.vendedorNombre.split(' ')[0]}! Vi en Faro que ${f.razonSocial} necesita atención${
                               razones[0] ? ` (${razones[0]})` : ''
                             } — ¿le diste una vuelta?`
-                            const url = whatsappVendedor(f.vendedorAsignado, mensaje)
+                            const url = whatsappUrl(f.vendedorNombre, whatsappPorNombre, mensaje)
                             return (
                               url && (
                                 <a
@@ -270,7 +245,7 @@ export default function Faro() {
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
                                   className="text-emerald-500 hover:text-emerald-700 shrink-0"
-                                  title={`Escribirle por WhatsApp a ${f.vendedorAsignado}`}
+                                  title={`Escribirle por WhatsApp a ${f.vendedorNombre}`}
                                 >
                                   <MessageCircle size={13} />
                                 </a>
@@ -300,8 +275,7 @@ export default function Faro() {
                           <p className="text-[11px] text-slate-400 flex items-center gap-1 mb-1">
                             <TrendingDown size={12} /> Venta del período
                           </p>
-                          <p className="text-sm font-semibold text-slate-700">{formatCurrency(f.actual)}</p>
-                          <p className="text-[11px] text-slate-400">vs. {formatCurrency(f.anterior)} anterior</p>
+                          <p className="text-sm font-semibold text-slate-700">{formatCurrency(f.venta)}</p>
                         </div>
                         <div className="p-2.5 rounded-lg bg-slate-50">
                           <p className="text-[11px] text-slate-400 flex items-center gap-1 mb-1">
@@ -316,13 +290,13 @@ export default function Faro() {
                           <p className="text-[11px] text-slate-400 flex items-center gap-1 mb-1">
                             <Clock size={12} /> Último contacto
                           </p>
-                          <p className="text-sm font-semibold text-slate-700">{f.diasContacto === null ? 'Nunca' : `Hace ${f.diasContacto} días`}</p>
+                          <p className="text-sm font-semibold text-slate-700">{f.diasSinContacto === null ? 'Nunca' : `Hace ${f.diasSinContacto} días`}</p>
                         </div>
                       </div>
 
                       <div className="p-2.5 rounded-lg bg-slate-50">
                         <p className="text-[11px] text-slate-400 flex items-center gap-1 mb-1.5">
-                          <Tag size={12} /> Líneas habituales{f.sinFacturacion ? ' · sin actividad este período' : ''}
+                          <Tag size={12} /> Líneas habituales{f.venta === 0 ? ' · sin actividad este período' : ''}
                         </p>
                         {f.lineasHabituales.length === 0 ? (
                           <p className="text-xs text-slate-400">Sin datos.</p>
@@ -342,7 +316,7 @@ export default function Faro() {
                         {f.descuentoVigente ? (
                           <p className="text-sm text-slate-700">
                             <span className="font-semibold text-indigo-700">{f.descuentoVigente.descuento.toFixed(2)}%</span> de descuento sobre{' '}
-                            {f.descuentoVigente.linea} · vigente desde {PERIODS[indexOfPeriod(f.descuentoVigente.vigenteDesde)]?.label}
+                            {f.descuentoVigente.linea} · vigente desde {f.descuentoVigente.vigenteDesde}
                           </p>
                         ) : (
                           <p className="text-sm text-slate-400">Sin descuento pactado, lista de precios estándar.</p>

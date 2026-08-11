@@ -4,9 +4,15 @@ import { Card } from '../components/ui/Card'
 import { GestionFormModal } from '../components/agenda/GestionFormModal'
 import { useAuth } from '../context/AuthContext'
 import { useAgenda } from '../context/AgendaContext'
-import { vendedores, clientes, comprobantes, diasTranscurridos, HOY_DEMO_ISO } from '../data/mockData'
+import { useCatalogoBase } from '../api/reportes'
+import { useCobranzas } from '../api/cobranzas'
 import { MONTH_ABBR } from '../data/periods'
 import { formatCurrency } from '../utils/format'
+
+// Sólo para inicializar `weekStart` antes de que llegue la respuesta de
+// /reportes/base (que trae la fecha de referencia real de la empresa) —
+// coincide con el seed de demo, así que en la práctica no hay salto visual.
+const HOY_FALLBACK_ISO = '2026-08-06'
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const HORAS = Array.from({ length: 11 }, (_, i) => i + 8) // 08 a 18 hs
@@ -41,11 +47,17 @@ export default function Calendario() {
   const { actividades } = useAgenda()
   const esVendedor = user?.rol === 'vendedor'
 
-  const [weekStart, setWeekStart] = useState(() => lunesDe(HOY_DEMO_ISO))
+  const [weekStart, setWeekStart] = useState(() => lunesDe(HOY_FALLBACK_ISO))
   const [filtroVendedor, setFiltroVendedor] = useState(esVendedor ? user.nombre : 'Todos')
   const [actividadSeleccionada, setActividadSeleccionada] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
-  const [formDefaults, setFormDefaults] = useState({ fecha: HOY_DEMO_ISO, hora: '09:00', clienteCodigo: '', tipo: undefined, notas: undefined })
+  const [formDefaults, setFormDefaults] = useState({ fecha: HOY_FALLBACK_ISO, hora: '09:00', clienteCodigo: '', tipo: undefined, notas: undefined })
+
+  const { data: base } = useCatalogoBase()
+  const HOY_DEMO_ISO = base?.hoy ?? HOY_FALLBACK_ISO
+  const vendedores = base?.vendedores.map((v) => v.nombre) ?? []
+  const { data: cobranzasData } = useCobranzas({ periodos: base?.periodos.map((p) => p.key) ?? [], umbralDias: 0 })
+  const comprobantes = cobranzasData?.comprobantes ?? []
 
   function irSemanaAnterior() {
     setWeekStart((d) => {
@@ -71,13 +83,12 @@ export default function Calendario() {
   }
 
   function abrirReclamo(cuenta) {
-    const cliente = clientes.find((c) => c.razonSocial === cuenta.cliente)
     setFormDefaults({
       fecha: HOY_DEMO_ISO,
       hora: '09:00',
-      clienteCodigo: cliente?.codigo ?? '',
+      clienteCodigo: cuenta.clienteId ?? '',
       tipo: 'Llamada',
-      notas: `Reclamar pago de ${formatCurrency(cuenta.saldo)} vencido hace ${cuenta.dias} días (comprobante ${cuenta.comprobante}).`,
+      notas: `Reclamar pago de ${formatCurrency(cuenta.saldo)} vencido hace ${cuenta.dias} días (comprobante ${cuenta.numero}).`,
     })
     setFormOpen(true)
   }
@@ -103,13 +114,14 @@ export default function Calendario() {
   // Cuentas vencidas: foto de hoy del saldo pendiente con mora, sin depender
   // de la semana que se esté mirando arriba — respeta el filtro de vendedor
   // igual que el resto de la página.
+  const vendedorPorClienteId = useMemo(() => Object.fromEntries((base?.clientes ?? []).map((c) => [c.codigo, c.vendedorAsignado])), [base])
   const cuentasVencidas = useMemo(() => {
     return comprobantes
-      .filter((c) => c.vencido && c.saldo > 0)
-      .filter((c) => filtroVendedor === 'Todos' || clientes.find((cl) => cl.razonSocial === c.cliente)?.vendedorAsignado === filtroVendedor)
-      .map((c) => ({ ...c, dias: diasTranscurridos(c.fecha) }))
+      .filter((c) => c.vencidoDinamico && Number(c.saldo) > 0)
+      .filter((c) => filtroVendedor === 'Todos' || vendedorPorClienteId[c.clienteId] === filtroVendedor)
+      .map((c) => ({ ...c, cliente: c.clienteNombre, comprobante: c.numero, saldo: Number(c.saldo) }))
       .sort((a, b) => b.saldo - a.saldo)
-  }, [filtroVendedor])
+  }, [comprobantes, filtroVendedor, vendedorPorClienteId])
 
   return (
     <div className="space-y-4 md:space-y-6">

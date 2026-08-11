@@ -20,23 +20,10 @@ import { Card } from '../components/ui/Card'
 import { StatusDot } from '../components/ui/StatusDot'
 import { SortableTh } from '../components/ui/SortableTh'
 import { usePeriod } from '../context/PeriodContext'
-import {
-  vendedores,
-  clientes,
-  resumenPorPeriodo,
-  ventaVendedorRango,
-  ventaClienteRango,
-  actividadesAgendaSemilla,
-  oportunidades,
-  etapasPipeline,
-  indexOfFecha,
-  clientesAGestionarHoy,
-  clasificarClientesABC,
-  lineasPreferidasPorCliente,
-  whatsappVendedor,
-  HOY_DEMO_ISO,
-} from '../data/mockData'
-import { diasHabilesInfo, PERIODS, MONTH_ABBR } from '../data/periods'
+import { useCatalogoBase } from '../api/reportes'
+import { useGestiones, useOportunidades, useEtapas, useAgendaHoy } from '../api/hooks'
+import { createLiveData, EMPTY_BASE } from '../data/liveData'
+import { diasHabilesInfo, PERIODS, MONTH_ABBR, indexOfFecha } from '../data/periods'
 import { formatCurrency } from '../utils/format'
 import { compareValues, nextSort } from '../utils/sort'
 
@@ -61,18 +48,73 @@ function colorTasa(t) {
   return 'bg-rose-100 text-rose-700'
 }
 
+function capitalizar(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
+
 export default function ResumenGerencial() {
   const { year, month, selectedIndices, comparisonIndices, isAnnual, isSingleMonth, label } = usePeriod()
   const [vendedorSeleccionado, setVendedorSeleccionado] = useState(null)
   const [sort, setSort] = useState({ key: 'venta', dir: 'desc' })
   const [mostrarEvolucion, setMostrarEvolucion] = useState(false)
-  const [rkEmpresaAbierto, setRkEmpresaAbierto] = useState(null) // 'A' | 'B' | 'C' | null
+  const [rkEmpresaAbierto, setRkEmpresaAbierto] = useState(null)
   const [gestionesAbierto, setGestionesAbierto] = useState(false)
   const [aGestionarAbierto, setAGestionarAbierto] = useState(false)
 
-  function toggleRkEmpresa(tier) {
-    setRkEmpresaAbierto((prev) => (prev === tier ? null : tier))
+  const { data: base, isLoading: cargandoBase } = useCatalogoBase()
+  const { data: gestionesResp, isLoading: cargandoGestiones } = useGestiones()
+  const { data: oportunidadesResp, isLoading: cargandoOportunidades } = useOportunidades()
+  const { data: etapasResp } = useEtapas()
+  const { data: agendaHoyResp } = useAgendaHoy()
+
+  const cargando = cargandoBase || cargandoGestiones || cargandoOportunidades || !base
+
+  // Ver nota de EMPTY_BASE en Lineas.jsx: nunca se corta acá con un
+  // return temprano — así los useMemo de abajo se siguen llamando en el
+  // mismo orden en cada render, sin romper las reglas de hooks.
+  const { clientes, vendedores, ventaVendedorRango, ventaClienteRango, resumenPorPeriodo, clasificarClientesABC, lineasPreferidasPorCliente, whatsappVendedor, hoy } =
+    createLiveData(base ?? EMPTY_BASE)
+
+  const etapasPipeline = etapasResp?.etapas ?? []
+  const actividadesAgendaSemilla = useMemo(
+    () =>
+      (gestionesResp?.items ?? []).map((g) => ({
+        id: g.id,
+        cliente: g.clienteNombre,
+        vendedor: g.vendedorNombre,
+        tipo: capitalizar(g.tipo),
+        fecha: g.fecha,
+        hora: g.hora,
+        estado: capitalizar(g.estado),
+      })),
+    [gestionesResp],
+  )
+  const etapaTipoPorId = useMemo(() => Object.fromEntries(etapasPipeline.map((e) => [e.id, e.tipo])), [etapasPipeline])
+  const oportunidades = useMemo(
+    () =>
+      (oportunidadesResp?.items ?? []).map((o) => ({
+        id: o.id,
+        titulo: o.titulo,
+        cliente: o.clienteNombre,
+        vendedor: o.vendedorNombre,
+        valor: o.valor,
+        etapa: o.etapaId,
+        etapaTipo: etapaTipoPorId[o.etapaId],
+        fecha: o.fechaCierre ?? o.fechaEstimadaCierre,
+      })),
+    [oportunidadesResp, etapaTipoPorId],
+  )
+
+  function clientesAGestionarHoy(vendedorFiltro) {
+    const items = agendaHoyResp?.items ?? []
+    const filtrados = vendedorFiltro ? items.filter((i) => i.vendedorNombre === vendedorFiltro) : items
+    return filtrados.map((i) => ({
+      cliente: { codigo: i.clienteId, razonSocial: i.clienteNombre, vendedorAsignado: i.vendedorNombre },
+      fechaReferencia: i.fechaReferencia,
+    }))
   }
+
+  const HOY_DEMO_ISO = agendaHoyResp?.hoy ?? hoy
 
   const objetivoGlobal = selectedIndices.reduce((acc, i) => acc + (resumenPorPeriodo[i]?.objetivo ?? 0), 0)
   const objetivoPorVendedor = vendedores.length ? objetivoGlobal / vendedores.length : 0
@@ -94,10 +136,10 @@ export default function ResumenGerencial() {
     })
 
     const opsDelVendedor = oportunidades.filter(
-      (o) => o.vendedor === v && selectedIndices.includes(indexOfFecha(o.fecha)),
+      (o) => o.vendedor === v && o.fecha && selectedIndices.includes(indexOfFecha(o.fecha)),
     )
-    const ganadas = opsDelVendedor.filter((o) => o.etapa === 'ganado')
-    const abiertas = opsDelVendedor.filter((o) => o.etapa !== 'ganado' && o.etapa !== 'perdido')
+    const ganadas = opsDelVendedor.filter((o) => o.etapaTipo === 'ganada')
+    const abiertas = opsDelVendedor.filter((o) => o.etapaTipo === 'abierta')
     const porEtapa = Object.fromEntries(etapasPipeline.map((e) => [e.id, opsDelVendedor.filter((o) => o.etapa === e.id).length]))
     const tasaConversion = opsDelVendedor.length ? Math.round((ganadas.length / opsDelVendedor.length) * 100) : null
 
@@ -105,8 +147,7 @@ export default function ResumenGerencial() {
       habiles && habiles.transcurridos > 0 ? Math.round((venta / habiles.transcurridos) * habiles.totalHabiles) : null
 
     // Regla 80/20: cuántos clientes de la cartera del vendedor concentran el
-    // 80% de su facturación del período. Menos clientes = cartera más
-    // concentrada (más riesgo si se pierde alguno de esos clientes).
+    // 80% de su facturación del período.
     const clientesDelVendedor = clientes.filter((c) => c.vendedorAsignado === v)
     const ventasOrdenadas = clientesDelVendedor
       .map((c) => ventaClienteRango(c.codigo, selectedIndices))
@@ -160,15 +201,13 @@ export default function ResumenGerencial() {
       return f[sort.key]
     }
     return [...filas].sort((a, b) => compareValues(valor(a), valor(b), sort.dir))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filas, sort])
 
   const gestionesTotal = filas.reduce((acc, f) => acc + f.gestiones, 0)
   const aGestionarHoyTotal = filas.reduce((acc, f) => acc + f.aGestionarHoy, 0)
   const avanceEquipo = objetivoGlobal > 0 ? Math.round((ventaTotal / objetivoGlobal) * 100) : null
 
-  // Detalle de las gestiones registradas y de los clientes a gestionar hoy,
-  // de toda la empresa (sin filtrar por vendedor) — para el drill-down de
-  // las tarjetas de KPI de arriba.
   const gestionesDetalle = actividadesAgendaSemilla
     .filter((a) => selectedIndices.includes(indexOfFecha(a.fecha)))
     .sort((a, b) => `${b.fecha}${b.hora}`.localeCompare(`${a.fecha}${a.hora}`))
@@ -180,9 +219,6 @@ export default function ResumenGerencial() {
     pct: ventaTotal > 0 ? Math.round((f.venta / ventaTotal) * 100) : 0,
   }))
 
-  // Evolución mensual: venta de cada vendedor mes a mes durante el año
-  // elegido, siempre en pesos, para ver quién viene acompañando el
-  // crecimiento del equipo y quién queda por debajo del promedio.
   const evolucionMensual = useMemo(() => {
     return PERIODS.map((p, i) => {
       if (p.year !== year) return null
@@ -196,7 +232,8 @@ export default function ResumenGerencial() {
       punto.promedio = vendedores.length ? Math.round(total / vendedores.length) : 0
       return punto
     }).filter(Boolean)
-  }, [year])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, vendedores, base])
 
   const resumenEvolucion = vendedores.map((v, i) => {
     const meses = evolucionMensual.length
@@ -212,8 +249,6 @@ export default function ResumenGerencial() {
     : []
   const tiersABC = clasificarClientesABC(selectedIndices)
 
-  // Composición de TODA la cartera de la empresa por ranking A/B/C — misma
-  // clasificación acumulada que alimenta la Regla 80/20 en Clientes.
   const composicionRKEmpresa = { A: 0, B: 0, C: 0 }
   clientes.forEach((c) => {
     const t = tiersABC[c.codigo]
@@ -257,6 +292,14 @@ export default function ResumenGerencial() {
 
   function toggleVendedor(v) {
     setVendedorSeleccionado((prev) => (prev === v ? null : v))
+  }
+
+  function toggleRkEmpresa(tier) {
+    setRkEmpresaAbierto((prev) => (prev === tier ? null : tier))
+  }
+
+  if (cargando) {
+    return <p className="text-sm text-slate-400">Cargando resumen gerencial…</p>
   }
 
   return (

@@ -1,18 +1,10 @@
 // Hooks de React Query — un hook por dominio, consumidos desde las
-// páginas en reemplazo directo de los imports a src/data/mockData.
+// páginas. Dashboard/Clientes/Líneas/SKU/Resumen Gerencial usan
+// useCatalogoBase() (ver api/reportes.js) en vez de hooks propios acá,
+// porque comparten el mismo catálogo+matrices de /reportes/base.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getResumen } from './resumen'
-import { listarLineas } from './lineas'
 import { listarGestiones, crearGestion, aGestionarHoy } from './gestiones'
 import { listarEtapas, listarOportunidades, crearOportunidad, cambiarEtapaOportunidad } from './oportunidades'
-
-export function useResumen(params) {
-  return useQuery({ queryKey: ['resumen', params], queryFn: () => getResumen(params) })
-}
-
-export function useLineas(params) {
-  return useQuery({ queryKey: ['lineas', params], queryFn: () => listarLineas(params) })
-}
 
 export function useGestiones(clienteId) {
   return useQuery({ queryKey: ['gestiones', clienteId ?? null], queryFn: () => listarGestiones(clienteId) })

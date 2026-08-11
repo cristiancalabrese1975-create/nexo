@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { useAgenda } from '../context/AgendaContext'
 import { useAgendaHoy } from '../api/hooks'
 import { useClientesSelector } from '../api/clientes'
-import { indexOfFecha } from '../data/mockData'
+import { indexOfFecha } from '../data/periods'
 
 const estadoStyles = {
   Realizada: 'bg-emerald-50 text-emerald-700',

@@ -3,13 +3,25 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { PeriodFilter } from './PeriodFilter'
 import { ValueModeToggle } from './ValueModeToggle'
-import { clientesAGestionarHoy, ULTIMA_ACTUALIZACION_ISO, formatUltimaActualizacion } from '../../data/mockData'
+import { useAgendaHoy } from '../../api/hooks'
+import { useCatalogoBase } from '../../api/reportes'
+
+// Fecha de referencia de la empresa, como stand-in de "última actualización"
+// mientras no haya todavía ninguna importación real corrida (ver
+// server/src/modules/importaciones) — es sólo informativo en el Topbar.
+function formatFechaCorta(fechaISO) {
+  if (!fechaISO) return '—'
+  const fecha = new Date(`${fechaISO}T00:00:00`)
+  return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+}
 
 export function Topbar({ title, subtitle, onMenuClick }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const aGestionar = clientesAGestionarHoy(user?.rol === 'vendedor' ? user.nombre : null).length
-  const ultimaActualizacion = formatUltimaActualizacion(ULTIMA_ACTUALIZACION_ISO)
+  const { data: agendaHoy } = useAgendaHoy()
+  const { data: base } = useCatalogoBase()
+  const aGestionar = agendaHoy?.items?.length ?? 0
+  const ultimaActualizacion = formatFechaCorta(base?.hoy)
 
   return (
     <header className="sticky top-0 z-20 bg-white border-b border-slate-200 px-4 md:px-6">
@@ -34,10 +46,10 @@ export function Topbar({ title, subtitle, onMenuClick }) {
             <ValueModeToggle />
             <span
               className="hidden lg:flex items-center gap-1.5 text-xs text-slate-400 whitespace-nowrap"
-              title="Última vez que se importaron los datos de venta del sistema del cliente"
+              title="Fecha de referencia de los datos de venta"
             >
               <RefreshCw size={13} />
-              Datos actualizados {ultimaActualizacion}
+              Datos al {ultimaActualizacion}
             </span>
           </div>
           <button
@@ -73,7 +85,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
         <ValueModeToggle />
         <span className="flex items-center gap-1.5 text-xs text-slate-400 whitespace-nowrap">
           <RefreshCw size={12} />
-          Actualizado {ultimaActualizacion}
+          Datos al {ultimaActualizacion}
         </span>
       </div>
     </header>

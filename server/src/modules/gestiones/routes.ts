@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { randomInt } from 'node:crypto'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { cliente, gestion, usuario } from '../../db/schema'
 import { ValidationError } from '../../core/errors'
@@ -19,6 +19,8 @@ export async function gestionesRoutes(app: FastifyInstance) {
     const condiciones = [eq(gestion.empresaId, ctx.empresaId)]
     if (ctx.rol === 'vendedor') condiciones.push(eq(gestion.vendedorId, ctx.usuarioId))
     if (typeof query.clienteId === 'string') condiciones.push(eq(gestion.clienteId, query.clienteId))
+    if (typeof query.desde === 'string') condiciones.push(gte(gestion.fecha, query.desde))
+    if (typeof query.hasta === 'string') condiciones.push(lte(gestion.fecha, query.hasta))
 
     const items = await db
       .select({

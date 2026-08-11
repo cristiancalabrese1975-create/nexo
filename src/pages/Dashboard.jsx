@@ -14,19 +14,10 @@ import { Card } from '../components/ui/Card'
 import { StatusDot } from '../components/ui/StatusDot'
 import { usePeriod } from '../context/PeriodContext'
 import { useValueMode } from '../context/ValueModeContext'
-import {
-  resumenPorPeriodo,
-  unidadesPorPeriodo,
-  lineas,
-  valorLinea,
-  objetivoLineaRango,
-  ventaResumenRango,
-  unidadesResumenRango,
-  inflacionAcumulada,
-  HOY_DEMO_ISO,
-} from '../data/mockData'
+import { useCatalogoBase } from '../api/reportes'
+import { createLiveData } from '../data/liveData'
 import { diasHabilesInfo, diasEnMes } from '../data/periods'
-import { formatCurrency, formatPercent, formatValor } from '../utils/format'
+import { formatPercent, formatValor } from '../utils/format'
 import { TrendingDown, TrendingUp } from 'lucide-react'
 
 function KpiCard({ label, value, tone = 'default', hint }) {
@@ -48,16 +39,33 @@ function KpiCard({ label, value, tone = 'default', hint }) {
 export default function Dashboard() {
   const { year, month, selectedIndices, primaryIndex, comparisonIndices, yoyIndices, isAnnual, isSingleMonth, label } = usePeriod()
   const { modo } = useValueMode()
+  const { data: base, isLoading } = useCatalogoBase()
+
+  if (isLoading || !base) {
+    return <p className="text-sm text-slate-400">Cargando resumen…</p>
+  }
+
+  const {
+    lineas,
+    valorLinea,
+    objetivoLineaRango,
+    precioPromedioLinea,
+    resumenPorPeriodo,
+    unidadesPorPeriodo,
+    ventaResumenRango,
+    unidadesResumenRango,
+    inflacionAcumulada,
+    hoy: HOY_DEMO_ISO,
+  } = createLiveData(base)
 
   const venta = ventaResumenRango(selectedIndices)
   const ventaMostrada = modo === 'unidades' ? unidadesResumenRango(selectedIndices) : venta
 
   const objetivo = selectedIndices.reduce((acc, i) => acc + (resumenPorPeriodo[i]?.objetivo ?? 0), 0)
   // El objetivo sólo existe cargado en pesos; para mostrarlo en unidades lo
-  // convertimos línea por línea usando el precio promedio de cada una (es un
-  // equivalente calculado, no un dato cargado directamente en unidades).
+  // convertimos línea por línea usando el precio promedio real de cada una.
   const objetivoUnidades = lineas.reduce(
-    (acc, l) => acc + Math.round(objetivoLineaRango(l.id, selectedIndices) / (l.precioPromedio || 1)),
+    (acc, l) => acc + Math.round(objetivoLineaRango(l.id, selectedIndices) / (precioPromedioLinea(l.id) || 1)),
     0,
   )
   const objetivoMostrado = modo === 'unidades' ? objetivoUnidades : objetivo
@@ -65,7 +73,7 @@ export default function Dashboard() {
 
   const habiles = isSingleMonth ? diasHabilesInfo(year, month, HOY_DEMO_ISO) : null
 
-  // Fecha "de hoy" de la demo y días de calendario que faltan para el
+  // Fecha "de hoy" de la empresa y días de calendario que faltan para el
   // cierre del mes en curso — independiente del período que se esté
   // filtrando arriba, siempre relativo a la fecha actual real.
   const hoyDate = new Date(`${HOY_DEMO_ISO}T00:00:00`)
@@ -295,7 +303,7 @@ export default function Dashboard() {
               {lineas.map((l) => {
                 const ventaLinea = valorLinea(l.id, selectedIndices, modo)
                 const objetivoLineaPesos = objetivoLineaRango(l.id, selectedIndices)
-                const objetivoLinea = modo === 'unidades' ? Math.round(objetivoLineaPesos / (l.precioPromedio || 1)) : objetivoLineaPesos
+                const objetivoLinea = modo === 'unidades' ? Math.round(objetivoLineaPesos / (precioPromedioLinea(l.id) || 1)) : objetivoLineaPesos
                 const pct = objetivoLinea === 0 ? null : Math.round((ventaLinea / objetivoLinea) * 100)
                 const ventaLineaAnterior = comparisonIndices.length ? valorLinea(l.id, comparisonIndices, modo) : 0
                 const mejora = ventaLinea > ventaLineaAnterior

@@ -3,7 +3,7 @@ import { and, eq, lte, or, isNull, gte } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { cliente, condicionComercial, lineaProducto } from '../../db/schema'
 import { cargarEmpresa, leerModo, leerPeriodos, valorSegunModo } from '../../core/query-helpers'
-import { hoyDeLaEmpresa } from '../../core/periodos'
+import { primerDiaDelMes } from '../../core/periodos'
 import { agregarPorCliente } from '../../core/consultas-venta'
 
 export async function descuentosRoutes(app: FastifyInstance) {
@@ -13,12 +13,15 @@ export async function descuentosRoutes(app: FastifyInstance) {
     const empresaRow = await cargarEmpresa(db, ctx)
     const periodos = leerPeriodos(query, empresaRow)
     const modo = leerModo(query)
-    const hoy = hoyDeLaEmpresa(empresaRow)
+    // Vigencia relativa al ÚLTIMO período que se está mirando (no a "hoy"
+    // real) — así, al navegar a un período pasado, sólo se ven las
+    // condiciones que ya estaban vigentes en ese momento.
+    const referencia = primerDiaDelMes(periodos[periodos.length - 1]!)
 
     const condiciones = [
       eq(condicionComercial.empresaId, ctx.empresaId),
-      lte(condicionComercial.vigenteDesde, hoy),
-      or(isNull(condicionComercial.vigenteHasta), gte(condicionComercial.vigenteHasta, hoy)),
+      lte(condicionComercial.vigenteDesde, referencia),
+      or(isNull(condicionComercial.vigenteHasta), gte(condicionComercial.vigenteHasta, referencia)),
     ]
     if (ctx.rol === 'vendedor') condiciones.push(eq(cliente.vendedorId, ctx.usuarioId))
 

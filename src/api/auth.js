@@ -1,10 +1,9 @@
 import { api, apiFetch, refrescarSesion, setAccessToken } from './client'
 
-// Las páginas que todavía no migraron de src/data/mockData (Agenda,
-// Clientes, Faro, Calendario) esperan `user.nombre` como "Nombre Apellido"
-// completo (mismo formato que `vendedorAsignado` en el mock) y
-// `user.iniciales` — se normaliza acá para no romperlas mientras dura la
-// migración página por página.
+// Varias páginas (Agenda, Clientes, Faro, Calendario, ResumenGerencial)
+// comparan `user.nombre` contra `vendedorAsignado` de clientes/gestiones,
+// que viaja como "Nombre Apellido" completo — se normaliza acá junto con
+// `user.iniciales` para el avatar del Topbar.
 function normalizarUsuario(u) {
   if (!u) return null
   const nombreCompleto = `${u.nombre} ${u.apellido}`

@@ -8,26 +8,12 @@ import { GestionFormModal } from '../components/agenda/GestionFormModal'
 import { usePeriod } from '../context/PeriodContext'
 import { useValueMode } from '../context/ValueModeContext'
 import { useAuth } from '../context/AuthContext'
-import {
-  clientes,
-  lineas,
-  skus,
-  valorCliente,
-  ventaClienteRango,
-  serieDiariaCliente,
-  inflacionAcumulada,
-  valorLinea,
-  lineasPreferidasPorCliente,
-  valorSku,
-  skusPreferidosPorCliente,
-  clasificarSkusABC,
-  clasificarClientesABC,
-} from '../data/mockData'
+import { useCatalogoBase, useReporteDiario } from '../api/reportes'
+import { createLiveData, serieDiariaCliente, EMPTY_BASE } from '../data/liveData'
 import { PERIODS, periodShortLabel, diasEnMes } from '../data/periods'
 import { formatCurrency, formatValor } from '../utils/format'
 import { compareValues, nextSort } from '../utils/sort'
 
-const categorias = ['Todas', ...new Set(clientes.map((c) => c.categoria))]
 const TRAILING = 5
 
 function colorRK(t) {
@@ -68,6 +54,26 @@ export default function Clientes() {
   const { modo } = useValueMode()
   const { user } = useAuth()
   const esVendedor = user?.rol === 'vendedor'
+  const { data: base, isLoading } = useCatalogoBase()
+  const { data: diario } = useReporteDiario(year, month, !isAnnual && vista === 'diario')
+
+  // Ver nota en Lineas.jsx: EMPTY_BASE evita cortar acá con un return y
+  // romper el orden de hooks (useMemo) de más abajo.
+  const {
+    clientes,
+    lineas,
+    skus,
+    valorCliente,
+    ventaClienteRango,
+    inflacionAcumulada,
+    valorLinea,
+    lineasPreferidasPorCliente,
+    valorSku,
+    skusPreferidosPorCliente,
+    clasificarSkusABC,
+    clasificarClientesABC,
+  } = createLiveData(base ?? EMPTY_BASE)
+  const categorias = ['Todas', ...new Set(clientes.map((c) => c.categoria))]
 
   function toggleCliente(codigo) {
     setClienteSeleccionado((prev) => (prev === codigo ? null : codigo))
@@ -75,7 +81,7 @@ export default function Clientes() {
 
   const filtrados = useMemo(
     () => (categoria === 'Todas' ? clientes : clientes.filter((c) => c.categoria === categoria)),
-    [categoria],
+    [categoria, clientes],
   )
 
   const trailingIdx = useMemo(() => {
@@ -243,7 +249,7 @@ export default function Clientes() {
   // ---- Vista diaria ----
   const dias = diasEnMes(year, isAnnual ? new Date().getMonth() + 1 : month)
   const seriesDiarias = !isAnnual && vista === 'diario'
-    ? filtrados.map((c) => serieDiariaCliente(c.codigo, year, month, modo))
+    ? filtrados.map((c) => serieDiariaCliente(diario, c.codigo, year, month, modo))
     : []
   const filasDiarias = seriesDiarias.length
     ? Array.from({ length: dias }, (_, i) => {
@@ -261,6 +267,10 @@ export default function Clientes() {
       compareValues(sortDiario.key === 'dia' ? a.day : a.valor, sortDiario.key === 'dia' ? b.day : b.valor, sortDiario.dir),
     )
   }, [filasDiarias, sortDiario])
+
+  if (isLoading || !base) {
+    return <p className="text-sm text-slate-400">Cargando clientes…</p>
+  }
 
   return (
     <div className="space-y-4">

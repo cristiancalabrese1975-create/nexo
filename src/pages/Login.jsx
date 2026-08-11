@@ -1,8 +1,18 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { usuarios } from '../data/mockData'
 import { NOMBRE_EMPRESA } from '../config'
 import { LogIn } from 'lucide-react'
+
+// Accesos de demo — coinciden con los usuarios que carga
+// server/src/seed/seed-demo.ts para la empresa "Nexo Demo". Sólo el DNI
+// y la clave viajan al backend para autenticar de verdad; esta lista es
+// nada más que el atajo visual "un clic para entrar" de la demo.
+const usuariosDemo = [
+  { dni: '30111222', clave: '1234', nombre: 'Marina Sosa', rol: 'vendedor' },
+  { dni: '28555777', clave: '1234', nombre: 'Lucas Ferreyra', rol: 'vendedor' },
+  { dni: '32999444', clave: '1234', nombre: 'Ezequiel Paz', rol: 'vendedor' },
+  { dni: '25444888', clave: 'gerente', nombre: 'Roberto Aguirre', rol: 'gerente' },
+]
 
 export default function Login() {
   const { login } = useAuth()
@@ -93,7 +103,7 @@ export default function Login() {
           <div className="mt-6 pt-5 border-t border-slate-100">
             <p className="text-xs font-medium text-slate-500 mb-2">Accesos de demo (un clic para entrar)</p>
             <div className="space-y-1.5">
-              {usuarios.map((u) => (
+              {usuariosDemo.map((u) => (
                 <button
                   key={u.dni}
                   onClick={() => usarDemo(u)}

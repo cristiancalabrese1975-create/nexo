@@ -25,8 +25,12 @@ export const MONTH_NAMES = [
 
 // Años que el usuario puede elegir en el filtro.
 export const YEARS = [2025, 2026]
-// Años incluidos en la serie interna (2024 sólo sirve de base interanual).
-const ALL_YEARS = [2024, 2025, 2026]
+// Años incluidos en la serie interna — coincide 1:1 con el rango de datos
+// reales que carga el seed (server/src/seed/seed-demo.ts): 2025 completo +
+// 2026 hasta "hoy". Ya no hay año 2024 "sombra": con datos reales, la
+// comparación interanual funciona sola apenas hay 12 meses de historia
+// (para 2025 se muestra "sin datos", igual que antes para el primer año).
+const ALL_YEARS = [2025, 2026]
 
 function monthsInYear(year) {
   return year === 2026 ? 8 : 12 // "hoy" es agosto de 2026
@@ -77,6 +81,12 @@ export function diasEnMes(year, month) {
 export function esHabil(date) {
   const dia = date.getDay()
   return dia !== 0 && dia !== 6
+}
+
+// Índice (posición en PERIODS) del mes al que pertenece una fecha 'YYYY-MM-DD'.
+export function indexOfFecha(fechaISO) {
+  const [y, m] = fechaISO.split('-')
+  return indexOfPeriod(`${y}-${m}`)
 }
 
 // Días hábiles (lunes a viernes) transcurridos y restantes de un mes,

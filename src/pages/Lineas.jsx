@@ -6,23 +6,12 @@ import { Sparkline } from '../components/ui/Sparkline'
 import { SortableTh } from '../components/ui/SortableTh'
 import { usePeriod } from '../context/PeriodContext'
 import { useValueMode } from '../context/ValueModeContext'
-import {
-  lineas,
-  clientes,
-  valorLinea,
-  serieDiariaLinea,
-  valorCliente,
-  lineasPreferidasPorCliente,
-  skusPorLinea,
-  valorSku,
-  clasificarSkusABC,
-  clasificarLineasABC,
-} from '../data/mockData'
+import { useCatalogoBase, useReporteDiario } from '../api/reportes'
+import { createLiveData, serieDiariaLinea, EMPTY_BASE } from '../data/liveData'
 import { PERIODS, periodShortLabel, diasEnMes } from '../data/periods'
 import { formatValor } from '../utils/format'
 import { compareValues, nextSort } from '../utils/sort'
 
-const direcciones = ['Todas', ...new Set(lineas.map((l) => l.direccion))]
 const TRAILING = 5
 
 function colorRK(t) {
@@ -52,6 +41,16 @@ export default function Lineas() {
   const [evolucionFiltro, setEvolucionFiltro] = useState(null)
   const { year, month, selectedIndices, primaryIndex, comparisonIndices, isAnnual, label } = usePeriod()
   const { modo } = useValueMode()
+  const { data: base, isLoading } = useCatalogoBase()
+  const { data: diario } = useReporteDiario(year, month, !isAnnual && vista === 'diario')
+
+  // ¡Ojo! `createLiveData` recibe EMPTY_BASE cuando todavía no llegó la
+  // respuesta, así todos los hooks de abajo (useMemo) se siguen llamando
+  // en el mismo orden en cada render — cortar acá con un `return`
+  // temprano rompería las reglas de hooks de React.
+  const { lineas, clientes, valorLinea, valorCliente, lineasPreferidasPorCliente, skusPorLinea, valorSku, clasificarSkusABC, clasificarLineasABC } =
+    createLiveData(base ?? EMPTY_BASE)
+  const direcciones = ['Todas', ...new Set(lineas.map((l) => l.direccion))]
 
   function toggleLinea(id) {
     setLineaSeleccionada((prev) => (prev === id ? null : id))
@@ -195,7 +194,7 @@ export default function Lineas() {
 
   const dias = diasEnMes(year, isAnnual ? new Date().getMonth() + 1 : month)
   const seriesDiarias = !isAnnual && vista === 'diario'
-    ? filtradas.map((l) => serieDiariaLinea(l.id, year, month, modo))
+    ? filtradas.map((l) => serieDiariaLinea(diario, l.id, year, month, modo))
     : []
   const filasDiarias = seriesDiarias.length
     ? Array.from({ length: dias }, (_, i) => {
@@ -211,6 +210,10 @@ export default function Lineas() {
       compareValues(sortDiario.key === 'dia' ? a.day : a.valor, sortDiario.key === 'dia' ? b.day : b.valor, sortDiario.dir),
     )
   }, [filasDiarias, sortDiario])
+
+  if (isLoading || !base) {
+    return <p className="text-sm text-slate-400">Cargando líneas…</p>
+  }
 
   return (
     <div className="space-y-4">

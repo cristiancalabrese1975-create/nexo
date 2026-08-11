@@ -3,22 +3,21 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Card } from '../components/ui/Card'
 import { SortableTh } from '../components/ui/SortableTh'
 import { usePeriod } from '../context/PeriodContext'
-import { descuentos, valorCliente } from '../data/mockData'
-import { indexOfPeriod } from '../data/periods'
+import { useDescuentos } from '../api/descuentos'
+import { periodKey } from '../data/periods'
 import { formatCurrency } from '../utils/format'
 import { compareValues, nextSort } from '../utils/sort'
-
-const lineasUnicas = ['Todas', ...new Set(descuentos.map((d) => d.linea))]
 
 export default function Descuentos() {
   const [linea, setLinea] = useState('Todas')
   const [sort, setSort] = useState({ key: null, dir: 'desc' })
-  const { primaryIndex, selectedIndices, label } = usePeriod()
+  const { year, selectedMonths, label } = usePeriod()
 
-  const vigentes = useMemo(
-    () => descuentos.filter((d) => indexOfPeriod(d.vigenteDesde) <= primaryIndex),
-    [primaryIndex],
-  )
+  const periodos = useMemo(() => selectedMonths.map((m) => periodKey(year, m)), [year, selectedMonths])
+  const { data, isLoading } = useDescuentos({ periodos, modo: 'pesos' })
+  const vigentes = data?.items ?? []
+
+  const lineasUnicas = useMemo(() => ['Todas', ...new Set(vigentes.map((d) => d.linea).filter(Boolean))], [vigentes])
 
   const filtrados = useMemo(
     () => (linea === 'Todas' ? vigentes : vigentes.filter((d) => d.linea === linea)),
@@ -26,29 +25,30 @@ export default function Descuentos() {
   )
 
   // Top 5 clientes que más descuento generan: monto aproximado = venta del
-  // cliente en el período × su % de descuento vigente sobre la línea que
-  // más le compra. Siempre en pesos (el descuento es un concepto monetario).
+  // cliente en el período (ya viene calculada por la API) × su % de
+  // descuento vigente sobre la línea que más le compra.
   const top5Descuento = useMemo(() => {
     return vigentes
       .filter((d) => d.descuento > 0)
-      .map((d) => ({
-        ...d,
-        monto: valorCliente(d.grupo, selectedIndices, 'pesos') * (d.descuento / 100),
-      }))
+      .map((d) => ({ ...d, monto: d.venta * (d.descuento / 100) }))
       .sort((a, b) => b.monto - a.monto)
       .slice(0, 5)
-  }, [vigentes, selectedIndices])
+  }, [vigentes])
 
   const filtradosOrdenados = useMemo(() => {
     if (!sort.key) return filtrados
     const valor = (d) => {
-      if (sort.key === 'grupo') return d.grupo
+      if (sort.key === 'grupo') return d.codigo
       if (sort.key === 'razonSocial') return d.razonSocial
       if (sort.key === 'linea') return d.linea
       return d.descuento
     }
     return [...filtrados].sort((a, b) => compareValues(valor(a), valor(b), sort.dir))
   }, [filtrados, sort])
+
+  if (isLoading || !data) {
+    return <p className="text-sm text-slate-400">Cargando descuentos…</p>
+  }
 
   return (
     <div className="space-y-4">
@@ -73,7 +73,7 @@ export default function Descuentos() {
                   />
                   <Bar dataKey="monto" radius={[0, 4, 4, 0]} maxBarSize={18}>
                     {top5Descuento.map((d) => (
-                      <Cell key={d.grupo} fill="#4f46e5" />
+                      <Cell key={d.id} fill="#4f46e5" />
                     ))}
                   </Bar>
                 </BarChart>
@@ -81,7 +81,7 @@ export default function Descuentos() {
             </div>
             <div className="space-y-1.5">
               {top5Descuento.map((d, idx) => (
-                <div key={d.grupo} className="flex items-center gap-3 bg-indigo-50/60 rounded-lg px-3 py-2">
+                <div key={d.id} className="flex items-center gap-3 bg-indigo-50/60 rounded-lg px-3 py-2">
                   <span className="text-xs font-bold text-indigo-400 w-4 shrink-0">{idx + 1}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-slate-700 truncate">{d.razonSocial}</p>
@@ -131,9 +131,9 @@ export default function Descuentos() {
                   </td>
                 </tr>
               )}
-              {filtradosOrdenados.map((d, i) => (
-                <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 md:px-6 py-2.5 text-slate-500">{d.grupo}</td>
+              {filtradosOrdenados.map((d) => (
+                <tr key={d.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
+                  <td className="px-4 md:px-6 py-2.5 text-slate-500">{d.codigo}</td>
                   <td className="px-4 py-2.5 font-medium text-slate-800 whitespace-nowrap">{d.razonSocial}</td>
                   <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{d.linea}</td>
                   <td className="px-4 md:px-6 py-2.5 text-right">

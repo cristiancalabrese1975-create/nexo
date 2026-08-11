@@ -83,6 +83,66 @@ export async function serieMensualEmpresa(db: Database, empresaId: string, perio
   })
 }
 
+/**
+ * Matriz mensual por entidad: un valor {monto,unidades} por cada período
+ * de la lista, para cada id de la columna pedida. Alineada 1:1 con el
+ * array `periodos` recibido — el índice de un período en ese array
+ * corresponde a la misma posición en cada serie del resultado (mismo
+ * criterio posicional que `PERIODS`/`selectedIndices` en el frontend).
+ * Sin scope de rol — se usa desde /reportes/base, que expone datos a
+ * nivel empresa a cualquier usuario autenticado (mismo alcance que tenían
+ * Líneas/SKU/Resumen Gerencial en la demo original, que nunca filtraban
+ * por vendedor).
+ */
+async function serieMensualMatrizPor(
+  db: Database,
+  empresaId: string,
+  periodos: Periodo[],
+  columna:
+    | typeof mvVentaMensual.clienteId
+    | typeof mvVentaMensual.lineaId
+    | typeof mvVentaMensual.productoId
+    | typeof mvVentaMensual.vendedorId,
+): Promise<Record<string, Array<{ monto: number; unidades: number }>>> {
+  if (periodos.length === 0) return {}
+  const fechas = toFechas(periodos)
+  const filas = await db
+    .select({
+      id: columna,
+      periodo: mvVentaMensual.periodo,
+      monto: sql<string>`COALESCE(SUM(${mvVentaMensual.monto}), 0)`,
+      unidades: sql<string>`COALESCE(SUM(${mvVentaMensual.unidades}), 0)`,
+    })
+    .from(mvVentaMensual)
+    .where(and(eq(mvVentaMensual.empresaId, empresaId), inArray(mvVentaMensual.periodo, fechas)))
+    .groupBy(columna, mvVentaMensual.periodo)
+
+  const porId = new Map<string, Map<string, { monto: number; unidades: number }>>()
+  for (const f of filas) {
+    if (f.id === null) continue
+    if (!porId.has(f.id)) porId.set(f.id, new Map())
+    porId.get(f.id)!.set(f.periodo, { monto: Number(f.monto), unidades: Number(f.unidades) })
+  }
+
+  const resultado: Record<string, Array<{ monto: number; unidades: number }>> = {}
+  for (const [id, porPeriodo] of porId) {
+    resultado[id] = periodos.map((p) => porPeriodo.get(primerDiaDelMes(p)) ?? { monto: 0, unidades: 0 })
+  }
+  return resultado
+}
+
+export const serieMensualMatrizCliente = (db: Database, empresaId: string, periodos: Periodo[]) =>
+  serieMensualMatrizPor(db, empresaId, periodos, mvVentaMensual.clienteId)
+
+export const serieMensualMatrizLinea = (db: Database, empresaId: string, periodos: Periodo[]) =>
+  serieMensualMatrizPor(db, empresaId, periodos, mvVentaMensual.lineaId)
+
+export const serieMensualMatrizProducto = (db: Database, empresaId: string, periodos: Periodo[]) =>
+  serieMensualMatrizPor(db, empresaId, periodos, mvVentaMensual.productoId)
+
+export const serieMensualMatrizVendedor = (db: Database, empresaId: string, periodos: Periodo[]) =>
+  serieMensualMatrizPor(db, empresaId, periodos, mvVentaMensual.vendedorId)
+
 export interface DiaVenta {
   day: number
   venta: number

@@ -57,6 +57,34 @@ export async function serieObjetivoEmpresa(db: Database, empresaId: string, peri
   return out
 }
 
+/** Objetivo mensual por línea (matriz línea × período, no sólo el total) — para series/gráficos, igual que serieObjetivoEmpresa. */
+export async function serieObjetivoLinea(db: Database, empresaId: string, periodos: Periodo[]): Promise<Record<string, number[]>> {
+  if (periodos.length === 0) return {}
+  const filas = await db
+    .select({ lineaId: objetivo.lineaId, periodo: objetivo.periodo, total: sql<string>`COALESCE(SUM(${objetivo.monto}), 0)` })
+    .from(objetivo)
+    .where(
+      and(
+        eq(objetivo.empresaId, empresaId),
+        eq(objetivo.ambito, 'linea'),
+        inArray(objetivo.periodo, periodos.map(primerDiaDelMes)),
+      ),
+    )
+    .groupBy(objetivo.lineaId, objetivo.periodo)
+
+  const porLinea = new Map<string, Map<string, number>>()
+  for (const f of filas) {
+    if (!f.lineaId) continue
+    if (!porLinea.has(f.lineaId)) porLinea.set(f.lineaId, new Map())
+    porLinea.get(f.lineaId)!.set(f.periodo, Number(f.total))
+  }
+  const resultado: Record<string, number[]> = {}
+  for (const [lineaId, porPeriodo] of porLinea) {
+    resultado[lineaId] = periodos.map((p) => porPeriodo.get(primerDiaDelMes(p)) ?? 0)
+  }
+  return resultado
+}
+
 export async function objetivoPorVendedor(db: Database, empresaId: string, periodos: Periodo[]): Promise<Record<string, number>> {
   if (periodos.length === 0) return {}
   const filas = await db

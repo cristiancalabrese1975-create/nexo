@@ -2,11 +2,11 @@ import type { FastifyInstance } from 'fastify'
 import { db } from '../../db/client'
 import { clasificarPorAcumulado } from '../../core/abc'
 import { NotFoundError } from '../../core/errors'
-import { rangoPeriodos, type Periodo } from '../../core/periodos'
+import { parsePeriodoKey, rangoPeriodos, type Periodo } from '../../core/periodos'
 import { cargarEmpresa, leerComparar, leerModo, leerPeriodos, valorSegunModo } from '../../core/query-helpers'
 import { assertTenant } from '../../core/tenant'
 import { ventaDiaria } from '../../core/consultas-venta'
-import { clientePorId, listarClientesVisibles, topLineasCliente, ventaTodosLosClientes } from './queries'
+import { clientePorId, listarClientesVisibles, serieMensualClientesVisibles, topLineasCliente, ventaTodosLosClientes } from './queries'
 
 export async function clientesRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: [app.authenticate] }, async (request) => {
@@ -53,6 +53,19 @@ export async function clientesRoutes(app: FastifyInstance) {
     })
 
     return { periodos: periodos.map((p) => p.key), modo, promedioEmpresa, items }
+  })
+
+  app.get('/serie-mensual', { preHandler: [app.authenticate] }, async (request) => {
+    const ctx = request.authCtx
+    const query = request.query as Record<string, unknown>
+    const empresaRow = await cargarEmpresa(db, ctx)
+    const hoy = empresaRow.fechaReferencia ?? new Date().toISOString().slice(0, 10)
+    const hasta = typeof query.hasta === 'string' ? parsePeriodoKey(query.hasta) : parsePeriodoKey(hoy.slice(0, 7))
+    const desde = typeof query.desde === 'string' ? parsePeriodoKey(query.desde) : parsePeriodoKey(`${hasta.year - 1}-01`)
+    const periodos = rangoPeriodos(desde, hasta)
+
+    const serie = await serieMensualClientesVisibles(db, ctx, periodos)
+    return { periodos: periodos.map((p) => p.key), serie }
   })
 
   app.get('/:id', { preHandler: [app.authenticate] }, async (request) => {

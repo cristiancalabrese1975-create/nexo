@@ -14,6 +14,7 @@ import { oportunidadesRoutes } from './modules/oportunidades/routes'
 import { gestionesRoutes } from './modules/gestiones/routes'
 import { agendaRoutes } from './modules/gestiones/agenda-routes'
 import { importacionesRoutes } from './modules/importaciones/routes'
+import { reportesRoutes } from './modules/reportes/routes'
 
 export async function buildApp() {
   const app = Fastify({
@@ -42,6 +43,7 @@ export async function buildApp() {
       await api.register(gestionesRoutes, { prefix: '/gestiones' })
       await api.register(agendaRoutes, { prefix: '/agenda' })
       await api.register(importacionesRoutes, { prefix: '/importaciones' })
+      await api.register(reportesRoutes, { prefix: '/reportes' })
     },
     { prefix: '/api/v1' },
   )
