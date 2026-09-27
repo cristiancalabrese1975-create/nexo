@@ -1,5 +1,4 @@
 import { and, eq, isNull } from 'drizzle-orm'
-import { uuidv7 } from 'uuidv7'
 import type { Database } from '../../db/client'
 import { sesionRefresh, usuario } from '../../db/schema'
 import { UnauthorizedError } from '../../core/errors'
@@ -30,18 +29,25 @@ export async function autenticarPorDni(db: Database, dni: string, clave: string)
   return fila
 }
 
-/** Genera el id + hash de una nueva sesión de refresh. El JWT en sí lo firma la ruta (necesita `app.refreshSign`). */
-export async function crearRegistroSesion(db: Database, usuarioId: string, tokenPlano: string, meta: SesionMeta) {
-  const id = uuidv7()
+/**
+ * Guarda el hash de una sesión de refresh, usando como id de la fila el
+ * mismo `sid` que la ruta ya firmó dentro del JWT — tienen que ser el
+ * mismo valor, porque `validarSesion` busca la fila por ese id a partir
+ * de lo que trae el token. Antes se generaba un id nuevo acá adentro
+ * (independiente del `sid` del JWT), así que el refresh nunca encontraba
+ * la fila y fallaba siempre con "Sesión inválida.", para cualquier
+ * usuario, en cualquier entorno.
+ */
+export async function crearRegistroSesion(db: Database, usuarioId: string, sid: string, tokenPlano: string, meta: SesionMeta) {
   await db.insert(sesionRefresh).values({
-    id,
+    id: sid,
     usuarioId,
     tokenHash: sha256(tokenPlano),
     expiraEn: new Date(Date.now() + parseDurationMs(env.JWT_REFRESH_TTL)),
     userAgent: meta.userAgent,
     ip: meta.ip,
   })
-  return id
+  return sid
 }
 
 /** Valida que la sesión exista, no esté revocada, no haya vencido, y que el token coincida con el hash guardado. */

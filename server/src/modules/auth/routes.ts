@@ -40,7 +40,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     const sid = crypto.randomUUID()
     const refreshToken = signRefreshToken({ usuarioId: usuarioFila.id, sid })
-    await crearRegistroSesion(db, usuarioFila.id, refreshToken, {
+    await crearRegistroSesion(db, usuarioFila.id, sid, refreshToken, {
       userAgent: request.headers['user-agent'],
       ip: request.ip,
     })
@@ -77,7 +77,7 @@ export async function authRoutes(app: FastifyInstance) {
     const accessToken = signAccessToken({ usuarioId: usuarioFila.id, empresaId: usuarioFila.empresaId, rol: usuarioFila.rol })
     const nuevoSid = crypto.randomUUID()
     const nuevoRefresh = signRefreshToken({ usuarioId: usuarioFila.id, sid: nuevoSid })
-    await crearRegistroSesion(db, usuarioFila.id, nuevoRefresh, {
+    await crearRegistroSesion(db, usuarioFila.id, nuevoSid, nuevoRefresh, {
       userAgent: request.headers['user-agent'],
       ip: request.ip,
     })
