@@ -16,6 +16,7 @@ import Lineas from './pages/Lineas'
 import Skus from './pages/Skus'
 import Cobranzas from './pages/Cobranzas'
 import Descuentos from './pages/Descuentos'
+import Importaciones from './pages/Importaciones'
 
 function RequireGerente({ children }) {
   const { user } = useAuth()
@@ -62,6 +63,14 @@ export default function App() {
               <Route path="skus" element={<Skus />} />
               <Route path="cobranzas" element={<Cobranzas />} />
               <Route path="descuentos" element={<Descuentos />} />
+              <Route
+                path="importaciones"
+                element={
+                  <RequireGerente>
+                    <Importaciones />
+                  </RequireGerente>
+                }
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>

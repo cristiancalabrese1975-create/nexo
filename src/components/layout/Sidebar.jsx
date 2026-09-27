@@ -11,6 +11,7 @@ import {
   CalendarClock,
   CalendarDays,
   BarChart3,
+  Upload,
   X,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
@@ -28,6 +29,7 @@ const navItems = [
   { to: '/skus', label: 'SKU', icon: Tag },
   { to: '/cobranzas', label: 'Cobranzas', icon: Wallet },
   { to: '/descuentos', label: 'Descuentos', icon: Percent },
+  { to: '/importaciones', label: 'Importar datos', icon: Upload, soloGerente: true },
 ]
 
 export function Sidebar({ open, onClose }) {

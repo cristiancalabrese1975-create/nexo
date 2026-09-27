@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { listarGestiones, crearGestion, aGestionarHoy } from './gestiones'
 import { listarEtapas, listarOportunidades, crearOportunidad, cambiarEtapaOportunidad } from './oportunidades'
+import { listarImportaciones, importarArchivo } from './importaciones'
 
 export function useGestiones(clienteId) {
   return useQuery({ queryKey: ['gestiones', clienteId ?? null], queryFn: () => listarGestiones(clienteId) })
@@ -36,6 +37,18 @@ export function useOportunidades() {
 export function useCrearOportunidad() {
   const qc = useQueryClient()
   return useMutation({ mutationFn: crearOportunidad, onSuccess: () => qc.invalidateQueries({ queryKey: ['oportunidades'] }) })
+}
+
+export function useImportaciones() {
+  return useQuery({ queryKey: ['importaciones'], queryFn: listarImportaciones })
+}
+
+export function useImportarArchivo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tipo, archivo }) => importarArchivo(tipo, archivo),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['importaciones'] }),
+  })
 }
 
 export function useCambiarEtapaOportunidad() {
