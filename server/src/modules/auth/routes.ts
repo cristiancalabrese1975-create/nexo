@@ -12,11 +12,20 @@ const loginSchema = z.object({
   clave: z.string().min(1, 'Clave requerida'),
 })
 
+// En producción, frontend (Vercel) y backend (Render) viven en dominios
+// distintos — eso hace que la cookie de refresh sea "cross-site" para el
+// navegador. `SameSite=Lax` no viaja en ese caso (sólo en navegaciones de
+// nivel superior, no en el fetch del refresh), así que ahí hace falta
+// `SameSite=None` + `Secure`. En desarrollo local (mismo sitio, http)
+// seguimos con `Lax` sin `Secure`, que es lo que Chrome exige para http.
+const esProduccion = process.env.NODE_ENV === 'production'
+const sameSiteCookie: 'lax' | 'none' = esProduccion ? 'none' : 'lax'
+
 const COOKIE_OPTS = {
   path: '/api/v1/auth',
   httpOnly: true,
-  sameSite: 'lax' as const,
-  secure: process.env.NODE_ENV === 'production',
+  sameSite: sameSiteCookie,
+  secure: esProduccion,
 }
 
 export async function authRoutes(app: FastifyInstance) {
