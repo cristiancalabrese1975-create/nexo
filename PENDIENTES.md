@@ -1,6 +1,6 @@
 # CRM 3.0 — Checklist del proyecto
 
-_Última actualización: 2026-08-11_
+_Última actualización: 2026-09-27_
 
 Este archivo se actualiza cada vez que resolvemos o agregamos un pendiente. Es el lugar para ver de un vistazo qué falta antes de que esto sea un producto en producción, vendible a empresas reales.
 
@@ -25,16 +25,23 @@ Este archivo se actualiza cada vez que resolvemos o agregamos un pendiente. Es e
 - **Backend real** (`server/`): Node + TypeScript + Fastify + Drizzle + PostgreSQL, **multi-empresa desde el modelo de datos** (toda tabla de negocio aislada por `empresa_id`). Incluye: 20 tablas + vista materializada de venta mensual, login por DNI con contraseñas hasheadas (argon2) + JWT de acceso/refresh reales, permisos por rol (vendedor/gerente/admin), scoring de oportunidades y de desvío de cliente, clasificación ABC, importador de Excel contra las plantillas `Nexo_Historial_de_Ventas.xlsx` / `Nexo_Alta_de_Vendedores.xlsx` (con detección de duplicados y reporte de errores fila por fila), y un seed que carga la misma demo comercial ya persistida. Ver `server/README.md` para levantarlo (necesita una base Postgres — Neon recomendado, no hay Docker instalado en esta PC).
 - **Login real**: el DNI/clave ya no vive en el bundle del frontend — autentica contra la base de datos con la clave hasheada.
 - **Las 11 pantallas conectadas al backend real — `src/data/mockData.js` ya no existe.** Dashboard, Clientes, Líneas, SKUs, Cobranzas, Descuentos, Faro, Resumen Gerencial, Pipeline, Agenda y Calendario consumen la API real. Las gestiones que carga el vendedor y los movimientos de etapa del Kanban **no se pierden al recargar** — se guardan de verdad. Verificado en el navegador con datos reales, como Vendedor (cartera propia) y como Gerente (todo desbloqueado).
+- **Nexo ya está publicado en internet, con datos reales en la nube:**
+  - Base de datos en **Neon** (Postgres administrado), migrada y sembrada con la demo comercial.
+  - Backend en **Render** (`https://nexo-rihv.onrender.com`), plan free.
+  - Frontend en **Vercel** (`https://nexo-nine-beta.vercel.app`), plan free.
+  - `vercel.json` reenvía `/api/*` de Vercel hacia Render — así el navegador ve todo como un solo origen, evitando el bloqueo de cookies "de tercero" entre dominios distintos.
+- **Pantalla "Importar datos"** (solo Gerente): sube un `.xlsx` de ventas o de vendedores, muestra filas cargadas/con error y, si se dan de alta vendedores, sus claves temporales. Usa el importador que ya existía en el servidor — le faltaba la parte visual.
+- **Bug de sesión corregido**: el refresh de sesión no funcionaba nunca (el `sid` del JWT no coincidía con el id guardado en la base) — arreglado y verificado de punta a punta en producción: login → recargar la página → sigue adentro.
 
 ---
 
 ## ⬜ Pendiente
 
 ### 🚀 Infraestructura / Deploy
-- [ ] Hospedar el backend en un hosting real (Railway/Render) y el frontend (Vercel/Netlify) — hoy sólo corren en esta PC. El código ya está listo para ese deploy, sólo falta crear las cuentas y conectar.
-- [ ] Provisionar la base de datos real en Neon (o similar) — el esquema y las migraciones están listos, falta crear la cuenta y correr `npm run db:migrate` + `npm run seed` contra una base real (no se pudo verificar en este entorno por no tener acceso a Postgres).
-- [ ] Comprar un dominio propio.
-- [ ] Definir estrategia de backup una vez que la base esté en producción.
+- [ ] Comprar un dominio propio y apuntarlo a Vercel (y opcionalmente a Render).
+- [ ] Definir estrategia de backup de la base en Neon.
+- [ ] Los planes free de Render/Vercel/Neon alcanzan para la demo y el primer cliente piloto, pero conviene revisar límites (Render free "duerme" el backend tras inactividad, primer request tarda ~50s) antes de vender en serio.
+- [ ] Activar el "Auto-Deploy" en Render y Vercel al conectar el repo (ya quedó activado en este primer deploy) para no tener que redesplegar a mano en cada push.
 
 ### 🔌 Integraciones reales (hoy simuladas)
 - [ ] Zoom/Teams real: hoy el enlace lo sigue generando el propio servidor de forma simulada, no crea una reunión real. Falta conectar la API oficial de cada plataforma (requiere cuenta/credenciales de desarrollador) + envío de invitación real (email o WhatsApp).
@@ -50,7 +57,8 @@ Este archivo se actualiza cada vez que resolvemos o agregamos un pendiente. Es e
 ### 🧩 Producto / Funcionalidades
 - [ ] Exportar reportes a Excel/PDF.
 - [ ] Historial de auditoría: el backend ya registra quién cambió qué y cuándo (tabla `auditoria`, se completa en cada alta/baja/cambio de etapa) — falta una pantalla en el frontend para consultarlo.
-- [ ] Permisos más finos (hoy el backend ya soporta 3 roles — vendedor/gerente/admin_empresa — falta exponer un ABM de usuarios en el frontend).
+- [ ] Permisos más finos (hoy el backend ya soporta 3 roles — vendedor/gerente/admin_empresa). Dar de alta vendedores ya se puede hacer desde "Importar datos" (carga masiva por Excel); falta un ABM de a uno, y una forma de crear una empresa nueva cuando se cierra un cliente real (hoy es un script manual).
+- [ ] Cobranzas, Líneas y Descuentos todavía no tienen importador — sólo Ventas y Vendedores. Cobranzas es la próxima prioridad (cambia a diario, igual que Ventas).
 - [ ] Carga de archivos/fotos desde la Agenda (ej. foto de la visita, comprobante firmado).
 - [ ] App instalable en el celular (PWA) para que el vendedor la use en la calle sin depender del navegador.
 - [ ] Piloto con una empresa real antes de salir a vender a más clientes.
